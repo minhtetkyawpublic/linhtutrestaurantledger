@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" role="img" aria-label="Lin Htut Restaurant Ledger">
+  <defs>
+    <linearGradient id="background" x1="20" y1="10" x2="172" y2="182" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff8a36"/>
+      <stop offset="1" stop-color="#c94000"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="44" fill="url(#background)"/>
+  <rect x="34" y="30" width="124" height="132" rx="20" fill="#fff9f2"/>
+  <path d="M58 72h76M58 96h76M58 120h48" stroke="#ef6c18" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="132" cy="126" r="20" fill="#2f7d57"/>
+  <path d="M123 126l6 6 13-15" fill="none" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

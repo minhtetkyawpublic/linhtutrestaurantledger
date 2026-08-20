@@ -1,0 +1,97 @@
+LIN HTUT RESTAURANT LEDGER - LOCAL TEST COMMANDS
+================================================
+
+Project directory (C: only):
+C:\xampp\htdocs\linhtutrestaurant
+
+App:
+http://127.0.0.1:8000
+
+Health check:
+http://127.0.0.1:8000/api/health
+
+Login:
+Email: admin@example.com
+Password: ChangeMe123!
+
+NORMAL START (after C:\xampp\php is upgraded to PHP 8.2 or newer)
+-----------------------------------------------------------------
+The app uses the C: XAMPP MariaDB database named linhtutrestaurant. The checked
+local .env expects XAMPP's default root user with an empty password. If you set
+a local root password, update DB_USERNAME and DB_PASSWORD in .env first.
+
+Open Command Prompt and run:
+
+cd C:\xampp\htdocs\linhtutrestaurant
+C:\xampp\php\php.exe artisan optimize:clear
+C:\xampp\php\php.exe artisan migrate
+npm run build:verify
+C:\xampp\php\php.exe artisan serve --host=127.0.0.1 --port=8000
+
+Keep the last terminal open, then open:
+http://127.0.0.1:8000
+
+The compiled build is recommended for normal local testing because it matches
+production. Do not keep "npm run dev" running at the same time. If it is
+currently running, press Ctrl+C in that terminal, then run these commands from
+a new terminal:
+
+cd C:\xampp\htdocs\linhtutrestaurant
+if exist public\hot del public\hot
+npm run build:verify
+C:\xampp\php\php.exe artisan optimize:clear
+C:\xampp\php\php.exe artisan serve --host=127.0.0.1 --port=8000
+
+AUTOMATED TESTS
+---------------
+cd C:\xampp\htdocs\linhtutrestaurant
+npm run build:verify
+C:\xampp\php\php.exe artisan test
+npm run test:browser
+
+OPTIONAL VITE DEVELOPMENT MODE
+------------------------------
+The React refresh preamble is configured and this mode is browser-tested. Run
+the Laravel server above in terminal 1. In terminal 2 run:
+
+cd C:\xampp\htdocs\linhtutrestaurant
+npm run dev -- --host 127.0.0.1
+
+Keep Vite running while developing and open:
+http://127.0.0.1:8000
+
+Optional automated development-mode browser check:
+npm run test:browser:dev
+
+When finished, press Ctrl+C in the Vite terminal. Before returning to compiled
+mode, run:
+
+cd C:\xampp\htdocs\linhtutrestaurant
+if exist public\hot del public\hot
+npm run build:verify
+
+OPTIONAL FULL MARIADB/MYSQL TEST PROFILE
+----------------------------------------
+This profile uses only the disposable linhtutrestaurant_test database:
+
+C:\xampp\mysql\bin\mysql.exe -u root -e "CREATE DATABASE IF NOT EXISTS linhtutrestaurant_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+C:\xampp\php\php.exe vendor\bin\phpunit --configuration=phpunit.mysql.xml
+
+IMPORTANT
+---------
+Laravel 12 requires PHP 8.2 or newer. C:\xampp\php\php.exe is currently
+PHP 8.0.30, so it must be upgraded before the C:-only PHP commands above work.
+
+The @vitejs/plugin-react preamble has been fixed and tested. If Vite is used,
+it must remain running. If Vite is stopped unexpectedly, delete public\hot and
+use the compiled-build commands above.
+
+If the browser still has the old white page:
+1. Press F12.
+2. Open Application > Storage > Clear site data.
+3. Open Application > Service Workers and unregister an old worker.
+4. Close the tab, reopen http://127.0.0.1:8000, and press Ctrl+F5 once.
+
+Do not run commands from D:\xampp\htdocs. The application, MariaDB database,
+compiled assets, cache, sessions, and logs are all associated with the C:
+XAMPP installation/project above.

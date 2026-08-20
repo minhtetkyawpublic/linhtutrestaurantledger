@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#fff7ed" />
+        <title>Lin Htut Restaurant Ledger — Offline</title>
+        <style>
+            :root {
+                color: #431407;
+                background: #fff7ed;
+                font-family:
+                    system-ui,
+                    -apple-system,
+                    "Noto Sans Myanmar",
+                    sans-serif;
+            }
+            body {
+                min-height: 100vh;
+                margin: 0;
+                display: grid;
+                place-items: center;
+                padding: 1.5rem;
+                box-sizing: border-box;
+            }
+            main {
+                width: min(100%, 28rem);
+                padding: 2rem;
+                border: 1px solid #fed7aa;
+                border-radius: 1.5rem;
+                background: #fff;
+                box-shadow: 0 1rem 2.5rem rgb(124 45 18 / 12%);
+            }
+            .mark {
+                width: 3.5rem;
+                height: 3.5rem;
+                display: grid;
+                place-items: center;
+                border-radius: 1rem;
+                color: #fff;
+                background: #ea580c;
+                font-weight: 800;
+            }
+            h1 {
+                margin: 1rem 0 0.5rem;
+                font-size: 1.45rem;
+            }
+            p {
+                margin: 0.5rem 0;
+                line-height: 1.65;
+            }
+            button {
+                width: 100%;
+                margin-top: 1rem;
+                padding: 0.9rem;
+                border: 0;
+                border-radius: 0.8rem;
+                color: #fff;
+                background: #ea580c;
+                font: inherit;
+                font-weight: 700;
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <div class="mark">LH</div>
+            <h1>You are offline</h1>
+            <p>Reconnect before viewing or changing restaurant records.</p>
+            <p lang="my">
+                အင်တာနက် ပြန်ချိတ်ပြီးမှ ဆိုင်စာရင်းများကို ကြည့်ရှု သို့မဟုတ်
+                ပြင်ဆင်ပါ။
+            </p>
+            <button type="button" onclick="location.reload()">
+                Try again / ပြန်စမ်းမည်
+            </button>
+        </main>
+    </body>
+</html>
