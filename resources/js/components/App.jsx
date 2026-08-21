@@ -7,15 +7,42 @@ import { APP_BASE_PATH } from "../utils/runtime-path";
 
 const money = (value) =>
     `${new Intl.NumberFormat("en-US").format(Number(value || 0))} Ks`;
-const nowForInput = () => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    return now.toISOString().slice(0, 16);
-};
+const APP_TIME_ZONE = "Asia/Bangkok";
+const THAILAND_UTC_OFFSET = "+07:00";
 const dateTimeForInput = (value) => {
     const date = new Date(value);
-    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-    return date.toISOString().slice(0, 16);
+    if (Number.isNaN(date.getTime())) return "";
+    const parts = Object.fromEntries(
+        new Intl.DateTimeFormat("en-CA", {
+            timeZone: APP_TIME_ZONE,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hourCycle: "h23",
+        })
+            .formatToParts(date)
+            .filter((part) => part.type !== "literal")
+            .map((part) => [part.type, part.value]),
+    );
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+const nowForInput = () => dateTimeForInput(new Date());
+const dateTimeInputToIso = (value) =>
+    value
+        ? new Date(
+              `${value.length === 16 ? `${value}:00` : value}${THAILAND_UTC_OFFSET}`,
+          ).toISOString()
+        : value;
+const formatDateTime = (value) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat(undefined, {
+        dateStyle: "short",
+        timeStyle: "medium",
+        timeZone: APP_TIME_ZONE,
+    }).format(date);
 };
 const makeKey = () =>
     globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
@@ -381,9 +408,9 @@ function HomeScreen({ t, permissions, goTo }) {
                                                 )}
                                             </strong>
                                             <small>
-                                                {new Date(
+                                                {formatDateTime(
                                                     entry.occurred_at,
-                                                ).toLocaleString()}
+                                                )}
                                             </small>
                                         </div>
                                     </div>
@@ -633,7 +660,7 @@ function NewSaleScreen({
             customer_id: form.is_walk_in ? null : Number(form.customer_id),
             discount_kyat: Number(form.discount_kyat || 0),
             paid_kyat: Number(form.paid_kyat || 0),
-            sale_at: new Date(form.sale_at).toISOString(),
+            sale_at: dateTimeInputToIso(form.sale_at),
             items: items.map((line) => ({
                 curry_item_id: line.id,
                 quantity: line.quantity,
@@ -1174,7 +1201,9 @@ function CustomersScreen({
             reason: moneyForm.reason,
             note: moneyForm.note,
             ...(moneyForm.occurred_at
-                ? { occurred_at: moneyForm.occurred_at }
+                ? {
+                      occurred_at: dateTimeInputToIso(moneyForm.occurred_at),
+                  }
                 : {}),
         };
         const fingerprint = JSON.stringify({
@@ -1268,7 +1297,11 @@ function CustomersScreen({
                     reason: correctionForm.reason,
                     note: correctionForm.note,
                     ...(correctionForm.occurred_at
-                        ? { occurred_at: correctionForm.occurred_at }
+                        ? {
+                              occurred_at: dateTimeInputToIso(
+                                  correctionForm.occurred_at,
+                              ),
+                          }
                         : {}),
                 },
             );
@@ -1713,6 +1746,9 @@ function CustomersScreen({
                                         })
                                     }
                                 >
+                                    <Notice kind="error">
+                                        {message.error}
+                                    </Notice>
                                     <form
                                         className="inset-form stack"
                                         onSubmit={recordMoney}
@@ -2040,9 +2076,9 @@ function CustomersScreen({
                                                         )}
                                                     </strong>
                                                     <small>
-                                                        {new Date(
+                                                        {formatDateTime(
                                                             entry.occurred_at,
-                                                        ).toLocaleString()}
+                                                        )}
                                                     </small>
                                                     {entry.reason && (
                                                         <small>
@@ -2428,7 +2464,7 @@ function HistoryManager({ t, onOpenSale, onOpenCustomer }) {
                                 <strong>{label(row)}</strong>
                                 <small>
                                     {row.customer?.name || t("walkin")} ·{" "}
-                                    {new Date(row.occurred_at).toLocaleString()}
+                                    {formatDateTime(row.occurred_at)}
                                 </small>
                             </span>
                             <div className="row-end">
@@ -2587,7 +2623,7 @@ function SaleDetailScreen({ t, saleId, onBack, permissions, online }) {
                 customer_id: editing.is_walk_in
                     ? null
                     : Number(editing.customer_id),
-                sale_at: new Date(editing.sale_at).toISOString(),
+                sale_at: dateTimeInputToIso(editing.sale_at),
                 discount_kyat: Number(editing.discount_kyat),
                 paid_kyat: Number(editing.paid_kyat),
                 items: editing.items.map((item) => ({
@@ -2822,7 +2858,7 @@ function SaleDetailScreen({ t, saleId, onBack, permissions, online }) {
                             <h2>{sale.invoice_number}</h2>
                             <small>
                                 {sale.customer?.name || t("walkin")} ·{" "}
-                                {new Date(sale.sale_at).toLocaleString()}
+                                {formatDateTime(sale.sale_at)}
                             </small>
                         </div>
                         <div className="align-right">
@@ -3901,9 +3937,7 @@ function AuditManager({ t }) {
                                 <strong>{t(`audit_${entry.action}`)}</strong>
                                 <small>
                                     {entry.actor?.name || t("system")} ·{" "}
-                                    {new Date(
-                                        entry.created_at,
-                                    ).toLocaleString()}
+                                    {formatDateTime(entry.created_at)}
                                 </small>
                                 {entry.reason && <small>{entry.reason}</small>}
                             </div>

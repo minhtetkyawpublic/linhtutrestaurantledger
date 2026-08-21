@@ -28,7 +28,7 @@ This is not an inventory, purchasing, profit-accounting, multi-branch, or printi
 - Browser URLs, API calls, PWA manifest, service worker, icons, and navigation must use a runtime-derived application base path. Do not hardcode the production domain or deployment folder into compiled JavaScript.
 - Build frontend assets locally and intentionally track `public/build/` for Hostinger deployment without Node.js.
 - Do not cache authenticated API responses in the service worker.
-- Use `Asia/Yangon` as the application timezone.
+- Use `Asia/Bangkok` as the application timezone because all operational users are in Thailand.
 - Store kyat amounts as integers.
 
 ## 3. Deliberate scope exclusions

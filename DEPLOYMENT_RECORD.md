@@ -4,13 +4,13 @@
 
 - Local project: `C:\xampp\htdocs\linhtutrestaurant`
 - Local database: C: XAMPP MariaDB `linhtutrestaurant` at `127.0.0.1:3306`
-- Application timezone: `Asia/Yangon`
+- Application timezone: `Asia/Bangkok`
 - Frontend gate: `npm run build:verify`
 - Backend gate: `php artisan test`
 - Latest repository migration: `2026_08_21_000011_remove_curry_categories`
-- Verification date: `2026-08-21` (`Asia/Yangon`)
-- Frontend result: 19 UI tests; production build assets and service worker
-  version `976cc4e94c88` verified
+- Verification date: `2026-08-21` (`Asia/Bangkok`)
+- Frontend result: 20 UI tests; production build assets and service worker
+  version `81b95eb874e1` verified
 - Development frontend result: the C:-project Vite server is available for
   local development; the production build gate also passes without relying on
   React refresh.
@@ -19,7 +19,7 @@
   modal, and the captured brand icon is generated from `linhtuticon.jpg`
 - Browser result: Chrome mobile viewport (390 x 844) passed login, direct report
   route refresh, English/Myanmar layouts, logout/re-login, and offline fallback
-- Backend result: 74 tests, 446 assertions on both the default test profile and
+- Backend result: 75 tests, 451 assertions on both the default test profile and
   the isolated MariaDB/MySQL `linhtutrestaurant_test` profile
 - Dependency audit: Composer and npm report no known vulnerabilities; the
   removed PDF feature's deprecated TCPDF dependency is no longer installed

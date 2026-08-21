@@ -4,6 +4,7 @@ import {
     render,
     screen,
     waitFor,
+    within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -670,11 +671,74 @@ describe("restaurant ledger app shell", () => {
                 `/customers/${customer.id}/payments`,
                 expect.objectContaining({
                     amount_kyat: 200,
-                    occurred_at: "2026-08-19T10:30",
+                    occurred_at: "2026-08-19T03:30:00.000Z",
                     idempotency_key: expect.any(String),
                 }),
             ),
         );
+    });
+
+    it("shows customer money validation errors inside the open modal", async () => {
+        const customer = {
+            id: 15,
+            name: "Thailand Customer",
+            phone_number: null,
+            current_balance_kyat: 500,
+        };
+        const permissions = [
+            "view_dashboard",
+            "view_customers",
+            "record_customer_payment",
+            "backdate_sale",
+        ];
+        api.get.mockImplementation((path) => {
+            if (path === "/auth/session")
+                return Promise.resolve({
+                    data: { user: adminUser, permissions },
+                });
+            if (path === "/customers")
+                return Promise.resolve({ data: page([customer]) });
+            if (path === `/customers/${customer.id}`)
+                return Promise.resolve({ data: customer });
+            if (path === `/customers/${customer.id}/ledger`)
+                return Promise.resolve({ data: page([]) });
+            return Promise.resolve({ data: [] });
+        });
+        api.post.mockRejectedValue({
+            response: {
+                data: {
+                    errors: {
+                        occurred_at: ["Date and time cannot be in the future."],
+                    },
+                },
+            },
+        });
+        render(<App />);
+
+        await screen.findByRole("heading", { name: /Ready to record/ });
+        fireEvent.click(screen.getByRole("button", { name: /Customers/ }));
+        fireEvent.click(
+            await screen.findByRole("button", { name: /Thailand Customer/ }),
+        );
+        fireEvent.click(
+            await screen.findByRole("button", {
+                name: "Customer Pays Shop",
+            }),
+        );
+        const dialog = screen.getByRole("dialog");
+        fireEvent.change(within(dialog).getByLabelText("Amount"), {
+            target: { value: "200" },
+        });
+        fireEvent.change(within(dialog).getByLabelText("Reason"), {
+            target: { value: "Cash payment" },
+        });
+        fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+        expect(
+            await within(dialog).findByText(
+                "Date and time cannot be in the future.",
+            ),
+        ).toBeVisible();
     });
 
     it("shows a clear warning when connectivity is lost", async () => {

@@ -74,7 +74,11 @@ class HistoryPaginationTest extends TestCase
             ->assertJsonPath('per_page', 5)
             ->assertJsonPath('last_page', 2)
             ->assertJsonCount(5, 'data')
-            ->assertJsonPath('filters.range', 'today');
+            ->assertJsonPath('filters.range', 'today')
+            ->assertJsonPath(
+                'data.0.occurred_at',
+                fn (string $occurredAt) => str_ends_with($occurredAt, '+07:00')
+            );
 
         $second = $this->actingAs($user)->getJson('/api/histories?per_page=5&page=2');
         $second->assertOk()

@@ -91,7 +91,7 @@ When deploying to shared hosting (project kept in `public_html/<folder>`), keep:
 
 - one `.env` value set for production:
   - `APP_ENV=production`
-  - `APP_TIMEZONE=Asia/Yangon`
+  - `APP_TIMEZONE=Asia/Bangkok`
   - `APP_URL=https://example.com/<folder>/`
   - `SESSION_COOKIE` unique per app
   - `SESSION_PATH=/<folder>/`

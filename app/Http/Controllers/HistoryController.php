@@ -68,7 +68,7 @@ class HistoryController extends Controller
         $rows->through(fn ($row) => [
             'type' => $row->type,
             'record_id' => $row->record_id,
-            'occurred_at' => $row->occurred_at,
+            'occurred_at' => Carbon::parse($row->occurred_at, config('app.timezone'))->toIso8601String(),
             'customer' => $row->customer_id ? ['id' => $row->customer_id, 'name' => $row->customer_name] : null,
             'title' => $row->title,
             'amount_kyat' => (int) $row->amount_kyat,

@@ -25,7 +25,7 @@ class EnvironmentExamplesTest extends TestCase
         $values = Dotenv::parse($contents);
 
         $this->assertSame('Lin Htut Restaurant Ledger', $values['APP_NAME']);
-        $this->assertSame('Asia/Yangon', $values['APP_TIMEZONE']);
+        $this->assertSame('Asia/Bangkok', $values['APP_TIMEZONE']);
         $this->assertNotEmpty($values['SESSION_COOKIE']);
     }
 

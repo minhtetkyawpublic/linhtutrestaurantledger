@@ -372,6 +372,36 @@ class SalesLedgerTest extends TestCase
         $this->assertSame(400, $this->latestBalanceFor($customer));
     }
 
+    public function test_current_thailand_time_is_accepted_for_customer_money_actions(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-21 15:00:30', 'Asia/Bangkok'));
+
+        try {
+            $user = $this->makeUserWithPermissions([
+                'record_customer_payment',
+                'record_money_given_lent',
+                'backdate_sale',
+            ]);
+            [$customer] = $this->createCustomerAndItems();
+
+            $this->actingAs($user)->postJson("/api/customers/{$customer->id}/payments", [
+                'amount_kyat' => 200,
+                'reason' => 'Thailand current-time payment',
+                'occurred_at' => '2026-08-21T15:00',
+            ])->assertCreated();
+
+            $this->actingAs($user)->postJson("/api/customers/{$customer->id}/money-lent", [
+                'amount_kyat' => 50,
+                'reason' => 'Thailand current-time shop payment',
+                'occurred_at' => '2026-08-21T15:00',
+            ])->assertCreated();
+
+            $this->assertDatabaseCount('customer_ledger_entries', 2);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_financial_reason_accepts_the_documented_validation_limit(): void
     {
         $user = $this->makeUserWithPermissions(['record_customer_payment']);

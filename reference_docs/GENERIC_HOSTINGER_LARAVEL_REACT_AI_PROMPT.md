@@ -228,7 +228,7 @@ APP_ENV=production
 APP_KEY=
 APP_DEBUG=false
 APP_URL=https://<domain>/<folder>
-APP_TIMEZONE=Asia/Yangon
+APP_TIMEZONE=Asia/Bangkok
 
 LOG_CHANNEL=single
 LOG_LEVEL=warning

@@ -212,7 +212,7 @@ const main = async () => {
     const requiredProductionExampleValues = {
         APP_ENV: "production",
         APP_DEBUG: "false",
-        APP_TIMEZONE: "asia/yangon",
+        APP_TIMEZONE: "asia/bangkok",
         DB_CONNECTION: "mysql",
         SESSION_DRIVER: "database",
         SESSION_ENCRYPT: "true",

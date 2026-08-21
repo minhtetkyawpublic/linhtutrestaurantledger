@@ -39,6 +39,8 @@ class RoutingTest extends TestCase
 
     public function test_health_api_stays_in_api_namespace(): void
     {
+        $this->assertSame('Asia/Bangkok', config('app.timezone'));
+
         $response = $this->get('/api/health');
 
         $response->assertStatus(200);

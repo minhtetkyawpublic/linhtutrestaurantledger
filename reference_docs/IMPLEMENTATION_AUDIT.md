@@ -83,12 +83,12 @@ receipt previews are intentionally removed.
 ## Automated evidence (2026-08-21)
 
 - `npm run lint`: pass.
-- `npm run test:ui`: 19 tests pass.
-- `php artisan test --compact`: 74 tests / 446 assertions pass using the
+- `npm run test:ui`: 20 tests pass.
+- `php artisan test --compact`: 75 tests / 451 assertions pass using the
   available PHP 8.2 runtime.
-- `php vendor/bin/phpunit --configuration=phpunit.mysql.xml`: 74 tests / 446
+- `php vendor/bin/phpunit --configuration=phpunit.mysql.xml`: 75 tests / 451
   assertions pass against the disposable MySQL database.
-- `npm run build:verify`: pass, including lint, formatting, 19 UI tests,
+- `npm run build:verify`: pass, including lint, formatting, 20 UI tests,
   translation parity, root/nested path tests, production build, service worker,
   and Hostinger readiness verification.
 
