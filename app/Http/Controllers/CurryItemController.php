@@ -20,7 +20,7 @@ class CurryItemController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:200'],
-            'current_price_kyat' => ['required', 'integer', 'min:0'],
+            'current_price_kyat' => ['required', 'integer', 'min:0', 'max:9000000000000'],
             'display_order' => ['nullable', 'integer', 'min:0'],
             'is_available' => ['nullable', 'boolean'],
         ]);
@@ -41,7 +41,7 @@ class CurryItemController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:200'],
-            'current_price_kyat' => ['required', 'integer', 'min:0'],
+            'current_price_kyat' => ['required', 'integer', 'min:0', 'max:9000000000000'],
             'display_order' => ['nullable', 'integer', 'min:0'],
             'is_available' => ['nullable', 'boolean'],
         ]);

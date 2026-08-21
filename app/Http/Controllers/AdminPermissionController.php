@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
 class AdminPermissionController extends Controller
 {
@@ -46,7 +47,7 @@ class AdminPermissionController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8'],
+            'password' => ['required', 'string', 'max:255', Password::min(10)->letters()->mixedCase()->numbers()],
             'role_ids' => ['nullable', 'array'],
             'role_ids.*' => ['integer', 'exists:roles,id'],
             'permission_ids' => ['nullable', 'array'],
@@ -118,7 +119,7 @@ class AdminPermissionController extends Controller
     public function resetPassword(Request $request, User $user)
     {
         $validated = $request->validate([
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => ['required', 'string', 'max:255', 'confirmed', Password::min(10)->letters()->mixedCase()->numbers()],
             'reason' => ['required', 'string', 'max:255'],
         ]);
 
@@ -174,6 +175,11 @@ class AdminPermissionController extends Controller
 
     public function auditHistory(Request $request)
     {
+        $request->validate([
+            'action' => ['nullable', 'string', 'max:80'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
         $perPage = min(50, max(10, $request->integer('per_page', 20)));
         $query = AuditLog::query()
             ->with('actor:id,name,email')

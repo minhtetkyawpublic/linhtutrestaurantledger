@@ -13,6 +13,15 @@ class HistoryController extends Controller
 {
     public function index(Request $request)
     {
+        $request->validate([
+            'range' => ['nullable', 'in:today,yesterday,this_week,this_month,custom'],
+            'type' => ['nullable', 'in:all,sale,customer_paid,money_lent'],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d'],
+        ]);
         $range = $this->range($request);
         $type = $request->query('type', 'all');
         $customerId = $request->integer('customer_id') ?: null;
@@ -79,8 +88,13 @@ class HistoryController extends Controller
 
     public function filterOptions()
     {
+        $customers = Customer::query()
+            ->orderBy('name')
+            ->get(['id', 'name', 'is_archived']);
+        $customers->each->setAppends([]);
+
         return response()->json([
-            'customers' => Customer::query()->orderBy('name')->get(['id', 'name', 'is_archived']),
+            'customers' => $customers,
         ]);
     }
 

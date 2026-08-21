@@ -53,9 +53,28 @@ class LedgerService
                 'sale_id' => $payload['sale_id'] ?? null,
             ]);
 
-            $runningBalance = 0;
+            $runningBalance = (int) CustomerLedgerEntry::query()
+                ->where('customer_id', $customer->id)
+                ->where(function ($query) use ($entry) {
+                    $query->where('occurred_at', '<', $entry->occurred_at)
+                        ->orWhere(function ($sameTime) use ($entry) {
+                            $sameTime->where('occurred_at', $entry->occurred_at)
+                                ->where('id', '<', $entry->id);
+                        });
+                })
+                ->orderByDesc('occurred_at')
+                ->orderByDesc('id')
+                ->value('balance_after_kyat');
+
             CustomerLedgerEntry::query()
                 ->where('customer_id', $customer->id)
+                ->where(function ($query) use ($entry) {
+                    $query->where('occurred_at', '>', $entry->occurred_at)
+                        ->orWhere(function ($sameTime) use ($entry) {
+                            $sameTime->where('occurred_at', $entry->occurred_at)
+                                ->where('id', '>=', $entry->id);
+                        });
+                })
                 ->orderBy('occurred_at')
                 ->orderBy('id')
                 ->get()

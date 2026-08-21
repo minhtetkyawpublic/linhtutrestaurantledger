@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\CurryCategory;
 use App\Models\CurryItem;
 use App\Models\Customer;
 use App\Models\CustomerLedgerEntry;
@@ -11,7 +10,6 @@ use App\Models\Role;
 use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class PermissionAndReadinessTest extends TestCase
@@ -59,14 +57,10 @@ class PermissionAndReadinessTest extends TestCase
         $this->actingAs($user)->getJson('/api/reports/filter-options')->assertStatus(403);
 
         $admin = $this->makeUserWithPermissions(['view_reports']);
-        $archivedCategory = CurryCategory::query()->create([
-            'name' => 'Archived report category',
-            'is_active' => false,
-        ]);
         $archivedCurry = CurryItem::query()->create([
             'name' => 'Archived report curry',
             'current_price_kyat' => 500,
-            'curry_category_id' => $archivedCategory->id,
+            'curry_category_id' => null,
             'is_archived' => true,
         ]);
         $archivedCustomer = Customer::query()->create([
@@ -81,9 +75,8 @@ class PermissionAndReadinessTest extends TestCase
         $this->actingAs($admin)->getJson('/api/reports/customer-balances')->assertStatus(200);
         $this->actingAs($admin)->getJson('/api/reports/filter-options')
             ->assertOk()
-            ->assertJsonStructure(['customers', 'categories', 'curries'])
+            ->assertJsonStructure(['customers', 'curries'])
             ->assertJsonFragment(['id' => $archivedCustomer->id, 'name' => 'Archived report customer'])
-            ->assertJsonFragment(['id' => $archivedCategory->id, 'name' => 'Archived report category'])
             ->assertJsonFragment(['id' => $archivedCurry->id, 'name' => 'Archived report curry']);
     }
 
@@ -118,7 +111,7 @@ class PermissionAndReadinessTest extends TestCase
             ->assertJsonPath('customers_owe_count', 0);
     }
 
-    public function test_statement_endpoints_respect_customer_statement_permission(): void
+    public function test_paginated_customer_ledger_respects_statement_permission(): void
     {
         $customer = Customer::query()->create([
             'name' => 'Permission Customer',
@@ -129,15 +122,13 @@ class PermissionAndReadinessTest extends TestCase
         ]);
 
         $user = $this->makeUserWithPermissions(['view_customers']);
-        $today = Carbon::today()->toDateString();
-
-        $this->actingAs($user)->getJson("/api/customers/{$customer->id}/statement?from={$today}&to={$today}")
+        $this->actingAs($user)->getJson("/api/customers/{$customer->id}/ledger")
             ->assertStatus(403);
 
         $allowed = $this->makeUserWithPermissions(['view_customers', 'view_customer_statements']);
-        $this->actingAs($allowed)->getJson("/api/customers/{$customer->id}/statement?from={$today}&to={$today}")
-            ->assertStatus(200)
-            ->assertHeader('Content-Type', 'application/pdf');
+        $this->actingAs($allowed)->getJson("/api/customers/{$customer->id}/ledger")
+            ->assertOk()
+            ->assertJsonStructure(['data', 'current_page', 'last_page', 'per_page', 'total']);
     }
 
     public function test_sensitive_mutations_are_each_denied_without_their_permission(): void
@@ -150,11 +141,10 @@ class PermissionAndReadinessTest extends TestCase
             'is_archived' => false,
             'opening_balance_kyat' => 0,
         ]);
-        $category = CurryCategory::query()->create(['name' => 'Protected Category']);
         $item = CurryItem::query()->create([
             'name' => 'Protected Curry',
             'current_price_kyat' => 1000,
-            'curry_category_id' => $category->id,
+            'curry_category_id' => null,
         ]);
         $sale = Sale::query()->create([
             'user_id' => $viewer->id,
@@ -183,8 +173,6 @@ class PermissionAndReadinessTest extends TestCase
         $this->actingAs($viewer)->getJson('/api/sales/edit-options')->assertForbidden();
         $this->actingAs($viewer)->putJson("/api/sales/{$sale->id}", [])->assertForbidden();
         $this->actingAs($viewer)->postJson("/api/sales/{$sale->id}/reverse", [])->assertForbidden();
-        $this->actingAs($viewer)->postJson('/api/curry-categories', [])->assertForbidden();
-        $this->actingAs($viewer)->putJson("/api/curry-categories/{$category->id}", [])->assertForbidden();
         $this->actingAs($viewer)->postJson('/api/curry-items', [])->assertForbidden();
         $this->actingAs($viewer)->putJson("/api/curry-items/{$item->id}", [])->assertForbidden();
         $this->actingAs($viewer)->postJson("/api/curry-items/{$item->id}/archive", [])->assertForbidden();

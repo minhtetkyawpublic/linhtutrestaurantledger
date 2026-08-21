@@ -137,6 +137,30 @@ class SalesLedgerTest extends TestCase
         $this->assertSame(1, AuditLog::query()->where('action', 'sale_created')->count());
     }
 
+    public function test_sale_idempotency_key_rejects_changed_submission_details(): void
+    {
+        $user = $this->makeUserWithPermissions(['create_sale']);
+        [$customer, $item] = $this->createCustomerAndItems();
+        $payload = [
+            'customer_id' => $customer->id,
+            'is_walk_in' => false,
+            'sale_at' => Carbon::now()->toIso8601String(),
+            'discount_kyat' => 0,
+            'paid_kyat' => 500,
+            'idempotency_key' => 'sale-conflict-key',
+            'items' => [['curry_item_id' => $item->id, 'quantity' => 1]],
+        ];
+
+        $this->actingAs($user)->postJson('/api/sales', $payload)->assertCreated();
+        $payload['paid_kyat'] = 400;
+        $this->actingAs($user)->postJson('/api/sales', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('idempotency_key');
+
+        $this->assertDatabaseCount('sales', 1);
+        $this->assertDatabaseCount('customer_ledger_entries', 1);
+    }
+
     public function test_overpay_creates_negative_balance_for_named_customer(): void
     {
         $user = $this->makeUserWithPermissions(['create_sale']);
@@ -304,6 +328,26 @@ class SalesLedgerTest extends TestCase
             ->assertCreated();
         $this->actingAs($user)->postJson("/api/customers/{$customer->id}/payments", $payload)
             ->assertOk();
+
+        $this->assertSame(-200, $this->latestBalanceFor($customer));
+        $this->assertDatabaseCount('customer_ledger_entries', 1);
+    }
+
+    public function test_payment_idempotency_key_rejects_changed_amount(): void
+    {
+        $user = $this->makeUserWithPermissions(['record_customer_payment']);
+        [$customer] = $this->createCustomerAndItems();
+        $payload = [
+            'amount_kyat' => 200,
+            'reason' => 'Single payment',
+            'idempotency_key' => 'payment-conflict-key',
+        ];
+
+        $this->actingAs($user)->postJson("/api/customers/{$customer->id}/payments", $payload)->assertCreated();
+        $payload['amount_kyat'] = 300;
+        $this->actingAs($user)->postJson("/api/customers/{$customer->id}/payments", $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('idempotency_key');
 
         $this->assertSame(-200, $this->latestBalanceFor($customer));
         $this->assertDatabaseCount('customer_ledger_entries', 1);

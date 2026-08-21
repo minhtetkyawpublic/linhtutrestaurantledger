@@ -26,14 +26,23 @@ class CustomerController extends Controller
 
     public function show(Customer $customer)
     {
+        $customer->loadSum('ledgerEntries as ledger_balance', 'amount_kyat');
+
         return response()->json($customer);
     }
 
     public function index(Request $request)
     {
+        $request->validate([
+            'q' => ['nullable', 'string', 'max:100'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
         $q = $request->query('q');
+        $perPage = min(50, max(10, $request->integer('per_page', 25)));
 
         $query = Customer::query()
+            ->withSum('ledgerEntries as ledger_balance', 'amount_kyat')
             ->when($request->boolean('include_archived'), fn ($query) => $query->whereRaw('1=1'), fn ($query) => $query->where('is_active', true));
 
         if (! empty($q)) {
@@ -43,7 +52,7 @@ class CustomerController extends Controller
             });
         }
 
-        return $query->orderBy('name')->get();
+        return $query->orderBy('name')->paginate($perPage);
     }
 
     public function store(Request $request, LedgerService $ledgerService, AuditService $auditService)
@@ -59,9 +68,9 @@ class CustomerController extends Controller
     public function recordPayment(Request $request, Customer $customer, LedgerService $ledgerService, AuditService $auditService)
     {
         $data = $request->validate([
-            'amount_kyat' => ['required', 'integer', 'gt:0'],
+            'amount_kyat' => ['required', 'integer', 'gt:0', 'max:9000000000000'],
             'reason' => ['required', 'string', 'max:500'],
-            'note' => ['nullable', 'string'],
+            'note' => ['nullable', 'string', 'max:2000'],
             'occurred_at' => ['nullable', 'date'],
             'idempotency_key' => ['nullable', 'string', 'max:120'],
         ]);
@@ -69,7 +78,7 @@ class CustomerController extends Controller
 
         $meta = ['note' => $data['note'] ?? null, 'occurred_at' => $data['occurred_at'] ?? null];
         if (! empty($data['idempotency_key'])) {
-            $existing = $this->findExistingLedgerEntry($customer, $request, $data['idempotency_key'], 'customer_paid');
+            $existing = $this->findExistingLedgerEntry($customer, $request, $data['idempotency_key'], 'customer_paid', $data);
             if ($existing) {
                 return response()->json($existing, 200);
             }
@@ -98,9 +107,9 @@ class CustomerController extends Controller
     public function recordMoneyLent(Request $request, Customer $customer, LedgerService $ledgerService, AuditService $auditService)
     {
         $data = $request->validate([
-            'amount_kyat' => ['required', 'integer', 'gt:0'],
+            'amount_kyat' => ['required', 'integer', 'gt:0', 'max:9000000000000'],
             'reason' => ['required', 'string', 'max:500'],
-            'note' => ['nullable', 'string'],
+            'note' => ['nullable', 'string', 'max:2000'],
             'occurred_at' => ['nullable', 'date'],
             'idempotency_key' => ['nullable', 'string', 'max:120'],
         ]);
@@ -108,7 +117,7 @@ class CustomerController extends Controller
 
         $meta = ['note' => $data['note'] ?? null, 'occurred_at' => $data['occurred_at'] ?? null];
         if (! empty($data['idempotency_key'])) {
-            $existing = $this->findExistingLedgerEntry($customer, $request, $data['idempotency_key'], 'money_lent');
+            $existing = $this->findExistingLedgerEntry($customer, $request, $data['idempotency_key'], 'money_lent', $data);
             if ($existing) {
                 return response()->json($existing, 200);
             }
@@ -212,9 +221,9 @@ class CustomerController extends Controller
         }
 
         $data = $request->validate([
-            'amount_kyat' => ['required', 'integer', 'gt:0'],
+            'amount_kyat' => ['required', 'integer', 'gt:0', 'max:9000000000000'],
             'reason' => ['required', 'string', 'max:500'],
-            'note' => ['nullable', 'string'],
+            'note' => ['nullable', 'string', 'max:2000'],
             'occurred_at' => ['nullable', 'date'],
         ]);
         $this->validateMoneyOccurredAt($request, $data['occurred_at'] ?? null);
@@ -302,9 +311,9 @@ class CustomerController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'phone_number' => ['nullable', 'string', 'max:80'],
-            'address_or_note' => ['nullable', 'string'],
+            'address_or_note' => ['nullable', 'string', 'max:4000'],
             'is_archived' => ['nullable', 'boolean'],
-            'opening_balance_kyat' => ['nullable', 'integer'],
+            'opening_balance_kyat' => ['nullable', 'integer', 'between:-9000000000000,9000000000000'],
             'opening_balance_reason' => ['nullable', 'string', 'max:255'],
         ]);
 
@@ -376,7 +385,7 @@ class CustomerController extends Controller
         });
     }
 
-    private function findExistingLedgerEntry(Customer $customer, $request, string $idempotencyKey, string $eventType): ?CustomerLedgerEntry
+    private function findExistingLedgerEntry(Customer $customer, $request, string $idempotencyKey, string $eventType, array $data): ?CustomerLedgerEntry
     {
         $existing = CustomerLedgerEntry::query()
             ->where('actor_user_id', $request->user()->id)
@@ -388,6 +397,24 @@ class CustomerController extends Controller
             throw ValidationException::withMessages([
                 'idempotency_key' => ['This idempotency key was already used for a different customer money action.'],
             ]);
+        }
+
+        if ($existing) {
+            $expectedAmount = $eventType === 'customer_paid'
+                ? -((int) $data['amount_kyat'])
+                : (int) $data['amount_kyat'];
+            $sameOccurredAt = empty($data['occurred_at'])
+                || Carbon::parse($data['occurred_at'])->equalTo($existing->occurred_at);
+            $same = (int) $existing->amount_kyat === $expectedAmount
+                && $existing->reason === $data['reason']
+                && ($existing->meta['note'] ?? null) === ($data['note'] ?? null)
+                && $sameOccurredAt;
+
+            if (! $same) {
+                throw ValidationException::withMessages([
+                    'idempotency_key' => ['This idempotency key was already used with different money-entry details.'],
+                ]);
+            }
         }
 
         return $existing;
@@ -415,6 +442,10 @@ class CustomerController extends Controller
 
     private function parseDateRange(Request $request): array
     {
+        $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d'],
+        ]);
         $fromInput = $request->query('from');
         $toInput = $request->query('to');
 

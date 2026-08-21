@@ -76,7 +76,7 @@ class ReportsAndSharingTest extends TestCase
         return [$small, $big];
     }
 
-    public function test_receipt_endpoint_returns_pdf(): void
+    public function test_sale_detail_is_json_and_removed_receipt_route_is_unavailable(): void
     {
         $user = $this->makeUserWithPermissions(['create_sale']);
 
@@ -115,26 +115,17 @@ class ReportsAndSharingTest extends TestCase
         ]);
         $saleId = $sale->json('id');
 
-        $response = $this->actingAs($user)->get("/api/sales/{$saleId}/receipt");
-        $response->assertStatus(200);
-        $response->assertHeader('Content-Type', 'application/pdf');
-        $response->assertHeader('Content-Disposition', "inline; filename=\"receipt-{$sale->json('invoice_number')}.pdf\"");
-        $this->assertStringStartsWith('%PDF-', $response->getContent());
-        $this->assertStringContainsString('%%EOF', $response->getContent());
-        $this->assertGreaterThan(5_000, strlen($response->getContent()));
-
-        $otherCreator = $this->makeUserWithPermissions(['create_sale']);
-        $this->actingAs($otherCreator)
-            ->get("/api/sales/{$saleId}/receipt")
-            ->assertForbidden();
+        $this->actingAs($user)->get("/api/sales/{$saleId}/receipt")->assertNotFound();
 
         $historyViewer = $this->makeUserWithPermissions(['view_sales_history']);
         $this->actingAs($historyViewer)
-            ->get("/api/sales/{$saleId}/receipt")
-            ->assertOk();
+            ->getJson("/api/histories/sales/{$saleId}")
+            ->assertOk()
+            ->assertJsonPath('invoice_number', $sale->json('invoice_number'))
+            ->assertJsonPath('items.0.curry_name_snapshot', 'Fish curry');
     }
 
-    public function test_customer_ledger_date_filter_and_statement_pdf(): void
+    public function test_customer_ledger_date_filter_is_paginated_and_statement_is_removed(): void
     {
         $user = $this->makeUserWithPermissions(['create_edit_customers', 'record_customer_payment', 'view_customers', 'view_customer_statements', 'backdate_sale']);
 
@@ -163,17 +154,14 @@ class ReportsAndSharingTest extends TestCase
 
         $statement = $this->actingAs($user)->getJson("/api/customers/{$customer->id}/ledger?from={$today}&to={$today}");
         $statement->assertStatus(200);
-        $statement->assertJsonCount(1);
-        $this->assertSame('customer_paid', $statement->json('0.event_type'));
-        $this->assertSame($user->name, $statement->json('0.actor.name'));
-        $this->assertSame([], $statement->json('0.reversed_by'));
+        $statement->assertJsonPath('total', 1);
+        $this->assertSame('customer_paid', $statement->json('data.0.event_type'));
+        $this->assertSame($user->name, $statement->json('data.0.actor.name'));
+        $this->assertSame([], $statement->json('data.0.reversed_by'));
 
-        $pdf = $this->actingAs($user)->get("/api/customers/{$customer->id}/statement?from={$today}&to={$today}");
-        $pdf->assertStatus(200);
-        $pdf->assertHeader('Content-Type', 'application/pdf');
-        $this->assertStringStartsWith('%PDF-', $pdf->getContent());
-        $this->assertStringContainsString('%%EOF', $pdf->getContent());
-        $this->assertGreaterThan(5_000, strlen($pdf->getContent()));
+        $this->actingAs($user)
+            ->get("/api/customers/{$customer->id}/statement?from={$today}&to={$today}")
+            ->assertNotFound();
     }
 
     public function test_reports_endpoints_produce_sales_and_top_curries(): void
@@ -229,7 +217,8 @@ class ReportsAndSharingTest extends TestCase
 
         $balances = $this->actingAs($user)->getJson('/api/reports/customer-balances');
         $balances->assertStatus(200);
-        $balances->assertJsonPath('customers_who_owe_shop.0.customer_id', $customer->id);
+        $balances->assertJsonPath('total_outstanding', 200);
+        $balances->assertJsonPath('customers_owing_count', 1);
 
         $this->actingAs($user)->postJson('/api/sales/'.$createdSale->json('id').'/reverse', [
             'reason' => 'Cancelled for report test',

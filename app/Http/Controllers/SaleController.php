@@ -20,6 +20,7 @@ class SaleController extends Controller
     {
         return response()->json([
             'customers' => Customer::query()
+                ->withSum('ledgerEntries as ledger_balance', 'amount_kyat')
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get(['id', 'name', 'phone_number']),
@@ -36,6 +37,7 @@ class SaleController extends Controller
     {
         return response()->json([
             'customers' => Customer::query()
+                ->withSum('ledgerEntries as ledger_balance', 'amount_kyat')
                 ->orderBy('name')
                 ->get(['id', 'name', 'phone_number', 'is_active', 'is_archived']),
             'curries' => CurryItem::query()
@@ -61,13 +63,13 @@ class SaleController extends Controller
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'sale_at' => ['required', 'date'],
             'is_walk_in' => ['required', 'boolean'],
-            'note' => ['nullable', 'string'],
-            'discount_kyat' => ['required', 'integer', 'min:0'],
-            'paid_kyat' => ['required', 'integer', 'min:0'],
+            'note' => ['nullable', 'string', 'max:2000'],
+            'discount_kyat' => ['required', 'integer', 'min:0', 'max:9000000000000'],
+            'paid_kyat' => ['required', 'integer', 'min:0', 'max:9000000000000'],
             'idempotency_key' => ['nullable', 'string', 'max:120'],
             'items' => ['required', 'array', 'min:1'],
-            'items.*.curry_item_id' => ['required', 'integer', 'exists:curry_items,id'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.curry_item_id' => ['required', 'integer', 'distinct', 'exists:curry_items,id'],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:1000'],
         ]);
 
         $saleAt = Carbon::parse($data['sale_at']);
@@ -105,6 +107,8 @@ class SaleController extends Controller
                 ->first();
 
             if ($existing) {
+                $this->assertSameIdempotentSubmission($existing, $data);
+
                 return response()->json($existing, 200);
             }
         }
@@ -152,6 +156,7 @@ class SaleController extends Controller
                     ->with('items', 'customer')
                     ->first();
                 if ($existing) {
+                    $this->assertSameIdempotentSubmission($existing, $data);
                     $duplicate = true;
 
                     return $existing;
@@ -206,13 +211,13 @@ class SaleController extends Controller
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'sale_at' => ['required', 'date'],
             'is_walk_in' => ['required', 'boolean'],
-            'note' => ['nullable', 'string'],
-            'discount_kyat' => ['required', 'integer', 'min:0'],
-            'paid_kyat' => ['required', 'integer', 'min:0'],
+            'note' => ['nullable', 'string', 'max:2000'],
+            'discount_kyat' => ['required', 'integer', 'min:0', 'max:9000000000000'],
+            'paid_kyat' => ['required', 'integer', 'min:0', 'max:9000000000000'],
             'reason' => ['required', 'string', 'max:500'],
             'items' => ['required', 'array', 'min:1'],
-            'items.*.curry_item_id' => ['required', 'integer', 'exists:curry_items,id'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.curry_item_id' => ['required', 'integer', 'distinct', 'exists:curry_items,id'],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:1000'],
         ]);
 
         $saleAt = Carbon::parse($data['sale_at']);
@@ -427,5 +432,39 @@ class SaleController extends Controller
     private function generateInvoiceNumber(): string
     {
         return now()->format('YmdHis').random_int(100, 999);
+    }
+
+    private function assertSameIdempotentSubmission(Sale $sale, array $data): void
+    {
+        $requestedItems = collect($data['items'])
+            ->map(fn (array $item) => [
+                'curry_item_id' => (int) $item['curry_item_id'],
+                'quantity' => (int) $item['quantity'],
+            ])
+            ->sortBy('curry_item_id')
+            ->values()
+            ->all();
+        $savedItems = $sale->items
+            ->map(fn (SaleItem $item) => [
+                'curry_item_id' => (int) $item->curry_item_id,
+                'quantity' => (int) $item->quantity,
+            ])
+            ->sortBy('curry_item_id')
+            ->values()
+            ->all();
+
+        $same = (int) ($data['customer_id'] ?? 0) === (int) ($sale->customer_id ?? 0)
+            && (bool) $data['is_walk_in'] === (bool) $sale->is_walk_in
+            && Carbon::parse($data['sale_at'])->equalTo($sale->sale_at)
+            && (int) $data['discount_kyat'] === (int) $sale->discount_kyat
+            && (int) $data['paid_kyat'] === (int) $sale->paid_kyat
+            && ($data['note'] ?? null) === $sale->note
+            && $requestedItems === $savedItems;
+
+        if (! $same) {
+            throw ValidationException::withMessages([
+                'idempotency_key' => ['This submission key was already used for a different sale.'],
+            ]);
+        }
     }
 }

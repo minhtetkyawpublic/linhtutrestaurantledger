@@ -65,30 +65,12 @@ class CurryCustomerTest extends TestCase
         $this->assertTrue((bool) CurryItem::findOrFail($itemId)->is_archived);
     }
 
-    public function test_curry_categories_require_permission_to_create(): void
+    public function test_removed_curry_category_endpoints_are_not_available(): void
     {
-        $user = User::factory()->create(['password' => 'password']);
-        $response = $this->actingAs($user)->postJson('/api/curry-categories', ['name' => 'Breakfast']);
-        $response->assertStatus(403);
-
         $authorized = $this->makeUserWithPermissions(['manage_curry_items']);
-        $response = $this->actingAs($authorized)->postJson('/api/curry-categories', ['name' => 'Breakfast']);
-        $response->assertStatus(201);
-        $response->assertJsonPath('name', 'Breakfast');
 
-        $this->actingAs($authorized)->putJson('/api/curry-categories/'.$response->json('id'), [
-            'name' => 'Morning dishes',
-            'display_order' => 4,
-            'is_active' => false,
-        ])->assertOk()
-            ->assertJsonPath('name', 'Morning dishes')
-            ->assertJsonPath('display_order', 4)
-            ->assertJsonPath('is_active', false);
-
-        $this->assertDatabaseHas('audit_logs', [
-            'action' => 'curry_category_updated',
-            'subject_id' => $response->json('id'),
-        ]);
+        $this->actingAs($authorized)->getJson('/api/curry-categories')->assertNotFound();
+        $this->actingAs($authorized)->postJson('/api/curry-categories', ['name' => 'Breakfast'])->assertNotFound();
     }
 
     public function test_customers_can_be_created_with_opening_balance_reason_and_searched_by_name_or_phone(): void
@@ -115,6 +97,7 @@ class CurryCustomerTest extends TestCase
 
         $list = $this->actingAs($user)->getJson('/api/customers?q=Alice');
         $list->assertStatus(200);
+        $list->assertJsonPath('total', 1);
         $list->assertJsonFragment(['name' => 'Alice']);
 
         $phoneSearch = $this->actingAs($user)->getJson('/api/customers?q=091234');

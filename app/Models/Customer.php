@@ -34,6 +34,10 @@ class Customer extends Model
 
     public function currentBalanceKyat(): int
     {
+        if (array_key_exists('ledger_balance', $this->attributes)) {
+            return (int) $this->attributes['ledger_balance'];
+        }
+
         return (int) $this->ledgerEntries()
             ->orderByDesc('occurred_at')
             ->orderByDesc('id')

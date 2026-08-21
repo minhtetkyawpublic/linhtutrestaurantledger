@@ -30,15 +30,21 @@ const adminUser = {
     ui_locale: "en",
     is_disabled: false,
 };
+const page = (data) => ({
+    data,
+    current_page: 1,
+    last_page: 1,
+    per_page: 25,
+    total: data.length,
+});
 
 function mockGet(sessionResponse = guestSession) {
     api.get.mockImplementation((path) => {
         if (path === "/auth/session") return Promise.resolve(sessionResponse);
-        if (path === "/customers") return Promise.resolve({ data: [] });
+        if (path === "/customers") return Promise.resolve({ data: page([]) });
         if (path === "/curry-items") return Promise.resolve({ data: [] });
         if (path === "/sales/create-options")
             return Promise.resolve({ data: { customers: [], curries: [] } });
-        if (path === "/curry-categories") return Promise.resolve({ data: [] });
         if (path === "/sales") return Promise.resolve({ data: [] });
         if (path === "/dashboard")
             return Promise.resolve({
@@ -56,13 +62,13 @@ function mockGet(sessionResponse = guestSession) {
             });
         if (path === "/reports/customer-balances")
             return Promise.resolve({
-                data: { total_outstanding: 0, customers_who_owe_shop: [] },
+                data: { total_outstanding: 0, total_shop_owes: 0 },
             });
         if (path === "/reports/top-curries")
             return Promise.resolve({ data: {} });
         if (path === "/reports/filter-options")
             return Promise.resolve({
-                data: { customers: [], categories: [], curries: [] },
+                data: { customers: [], curries: [] },
             });
         return Promise.resolve({ data: [] });
     });
@@ -93,10 +99,9 @@ describe("restaurant ledger app shell", () => {
         expect(screen.getByLabelText("Email")).toBeVisible();
         expect(screen.getByLabelText("Password")).toBeVisible();
         expect(screen.getByRole("button", { name: "Login" })).toBeEnabled();
-        expect(container.querySelector(".brand-icon")).toHaveAttribute(
-            "src",
-            "/linhtuticon.jpg",
-        );
+        expect(
+            container.querySelector(".brand-icon").getAttribute("src"),
+        ).toContain("/linhtuticon.jpg");
     });
 
     it("switches the guest interface to Myanmar without English fallback labels", async () => {
@@ -333,7 +338,7 @@ describe("restaurant ledger app shell", () => {
         );
     });
 
-    it("shows complete saved-sale details without requiring history permission", async () => {
+    it("confirms a saved sale without rendering receipt actions", async () => {
         const customer = {
             id: 8,
             name: "Receipt Customer",
@@ -392,15 +397,17 @@ describe("restaurant ledger app shell", () => {
         fireEvent.click(screen.getByRole("button", { name: "Save sale" }));
 
         expect(
-            await screen.findByRole("heading", { name: "SALE-40" }),
-        ).toBeVisible();
-        expect(screen.getByText(/Note: Table 2/)).toBeVisible();
-        expect(
-            screen.getByRole("button", { name: "Share receipt" }),
+            await screen.findByText("Sale saved successfully."),
         ).toBeVisible();
         expect(
-            screen.getByRole("button", { name: "Save receipt PDF" }),
-        ).toBeVisible();
+            screen.queryByRole("heading", { name: "SALE-40" }),
+        ).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole("button", { name: "Share receipt" }),
+        ).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole("button", { name: "Save receipt PDF" }),
+        ).not.toBeInTheDocument();
     });
 
     it("preserves a sale form through connection loss and saves after recovery", async () => {
@@ -464,7 +471,7 @@ describe("restaurant ledger app shell", () => {
         fireEvent.click(screen.getByRole("button", { name: "Save sale" }));
 
         expect(
-            await screen.findByRole("heading", { name: "RECOVERED-1" }),
+            await screen.findByText("Sale saved successfully."),
         ).toBeVisible();
         expect(api.post).toHaveBeenCalledTimes(1);
     });
@@ -487,9 +494,11 @@ describe("restaurant ledger app shell", () => {
                     data: { user: adminUser, permissions },
                 });
             if (path === "/customers")
-                return Promise.resolve({ data: [customer] });
+                return Promise.resolve({ data: page([customer]) });
+            if (path === `/customers/${customer.id}`)
+                return Promise.resolve({ data: customer });
             if (path === `/customers/${customer.id}/ledger`)
-                return Promise.resolve({ data: [] });
+                return Promise.resolve({ data: page([]) });
             return Promise.resolve({ data: [] });
         });
         render(<App />);
@@ -499,6 +508,7 @@ describe("restaurant ledger app shell", () => {
         fireEvent.click(
             await screen.findByRole("button", { name: /Range Customer/ }),
         );
+        await screen.findByRole("heading", { name: "Range Customer" });
         fireEvent.click(screen.getByRole("button", { name: "Filters" }));
         fireEvent.change(screen.getByLabelText("From"), {
             target: { value: "2026-08-01" },
@@ -511,7 +521,14 @@ describe("restaurant ledger app shell", () => {
         await waitFor(() =>
             expect(api.get).toHaveBeenCalledWith(
                 `/customers/${customer.id}/ledger`,
-                { params: { from: "2026-08-01", to: "2026-08-20" } },
+                {
+                    params: {
+                        from: "2026-08-01",
+                        to: "2026-08-20",
+                        page: 1,
+                        per_page: 15,
+                    },
+                },
             ),
         );
     });
@@ -548,14 +565,20 @@ describe("restaurant ledger app shell", () => {
                 });
             if (path === "/customers")
                 return Promise.resolve({
-                    data: [
+                    data: page([
                         corrected
                             ? { ...customer, current_balance_kyat: -125 }
                             : customer,
-                    ],
+                    ]),
+                });
+            if (path === `/customers/${customer.id}`)
+                return Promise.resolve({
+                    data: corrected
+                        ? { ...customer, current_balance_kyat: -125 }
+                        : customer,
                 });
             if (path === `/customers/${customer.id}/ledger`)
-                return Promise.resolve({ data: [entry] });
+                return Promise.resolve({ data: page([entry]) });
             return Promise.resolve({ data: [] });
         });
         api.post.mockImplementation(() => {
@@ -612,7 +635,11 @@ describe("restaurant ledger app shell", () => {
                     data: { user: adminUser, permissions },
                 });
             if (path === "/customers")
-                return Promise.resolve({ data: [customer] });
+                return Promise.resolve({ data: page([customer]) });
+            if (path === `/customers/${customer.id}`)
+                return Promise.resolve({ data: customer });
+            if (path === `/customers/${customer.id}/ledger`)
+                return Promise.resolve({ data: page([]) });
             return Promise.resolve({ data: [] });
         });
         api.post.mockResolvedValue({ data: {} });
@@ -623,6 +650,7 @@ describe("restaurant ledger app shell", () => {
         fireEvent.click(
             await screen.findByRole("button", { name: /Backdate Customer/ }),
         );
+        await screen.findByRole("heading", { name: "Backdate Customer" });
         fireEvent.click(
             screen.getByRole("button", { name: "Customer Pays Shop" }),
         );
@@ -689,14 +717,15 @@ describe("restaurant ledger app shell", () => {
                 return Promise.resolve({
                     data: { user: adminUser, permissions },
                 });
-            if (path === "/sales") return Promise.resolve({ data: [sale] });
+            if (path === `/histories/sales/${sale.id}`)
+                return Promise.resolve({ data: sale });
             return Promise.resolve({ data: [] });
         });
         Object.defineProperty(navigator, "onLine", {
             configurable: true,
             value: false,
         });
-        window.history.replaceState({}, "", "/more/sales");
+        window.history.replaceState({}, "", `/history/sale/${sale.id}`);
 
         render(<App />);
 

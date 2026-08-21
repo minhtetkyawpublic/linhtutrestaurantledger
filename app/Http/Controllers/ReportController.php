@@ -15,10 +15,13 @@ class ReportController extends Controller
 {
     public function filterOptions()
     {
+        $customers = Customer::query()
+            ->orderBy('name')
+            ->get(['id', 'name', 'is_active', 'is_archived']);
+        $customers->each->setAppends([]);
+
         return response()->json([
-            'customers' => Customer::query()
-                ->orderBy('name')
-                ->get(['id', 'name', 'is_active', 'is_archived']),
+            'customers' => $customers,
             'curries' => CurryItem::query()
                 ->orderBy('display_order')
                 ->orderBy('name')
@@ -31,12 +34,14 @@ class ReportController extends Controller
         $filters = $this->reportRange($request);
         $salesQuery = $this->salesQuery($filters, $request);
         $salesQuery = $this->applyPaidStatusFilter($salesQuery, $request->query('paid_status'));
-        $sales = $salesQuery->get();
-
-        $totalSalesValue = (int) $sales->sum('total_kyat');
-        $totalDiscounts = (int) $sales->sum('discount_kyat');
-        $totalPaid = (int) $sales->sum('paid_kyat');
-        $totalNewDebt = (int) $sales->where('unpaid_kyat', '>', 0)->sum('unpaid_kyat');
+        $totals = $salesQuery
+            ->reorder()
+            ->selectRaw('COUNT(*) as sales_count')
+            ->selectRaw('COALESCE(SUM(total_kyat), 0) as total_sales')
+            ->selectRaw('COALESCE(SUM(discount_kyat), 0) as total_discounts')
+            ->selectRaw('COALESCE(SUM(paid_kyat), 0) as total_paid')
+            ->selectRaw('COALESCE(SUM(CASE WHEN unpaid_kyat > 0 THEN unpaid_kyat ELSE 0 END), 0) as total_new_debt')
+            ->first();
 
         $customerPayments = (int) $this->ledgerSumForFilters(
             CustomerLedgerEntry::query(),
@@ -80,136 +85,102 @@ class ReportController extends Controller
                 'from' => $filters['from']->toIso8601String(),
                 'to' => $filters['to']->toIso8601String(),
             ],
-            'total_sales' => $totalSalesValue,
-            'total_discounts' => $totalDiscounts,
-            'total_paid_at_sale' => $totalPaid,
-            'total_new_sale_debt' => $totalNewDebt,
+            'total_sales' => (int) $totals->total_sales,
+            'total_discounts' => (int) $totals->total_discounts,
+            'total_paid_at_sale' => (int) $totals->total_paid,
+            'total_new_sale_debt' => (int) $totals->total_new_debt,
             'customer_payments_received' => $customerPayments,
             'money_lent_or_returned' => $moneyLent,
-            'sales_count' => $sales->count(),
+            'sales_count' => (int) $totals->sales_count,
             'reversed_sales_count' => $cancelledCount,
             'reversed_ledger_entries_count' => $reversedLedgerCount,
             'paid_status' => $request->query('paid_status'),
-            'sales' => $sales->values(),
         ]);
     }
 
     public function customerBalances()
     {
-        $customers = Customer::query()->get();
-        $rows = [];
+        $balances = CustomerLedgerEntry::query()
+            ->select('customer_id')
+            ->selectRaw('SUM(amount_kyat) as balance')
+            ->groupBy('customer_id');
 
-        $owesShop = 0;
-        $shopOwes = 0;
-
-        foreach ($customers as $customer) {
-            $balance = (int) $customer->currentBalanceKyat();
-
-            $rows[] = [
-                'customer_id' => $customer->id,
-                'name' => $customer->name,
-                'balance' => $balance,
-            ];
-
-            if ($balance > 0) {
-                $owesShop += $balance;
-            } elseif ($balance < 0) {
-                $shopOwes += abs($balance);
-            }
-        }
+        $totals = DB::query()
+            ->fromSub($balances, 'customer_balances')
+            ->selectRaw('COALESCE(SUM(CASE WHEN balance > 0 THEN balance ELSE 0 END), 0) as total_outstanding')
+            ->selectRaw('COALESCE(SUM(CASE WHEN balance < 0 THEN ABS(balance) ELSE 0 END), 0) as total_shop_owes')
+            ->selectRaw('COALESCE(SUM(CASE WHEN balance > 0 THEN 1 ELSE 0 END), 0) as customers_owing_count')
+            ->selectRaw('COALESCE(SUM(CASE WHEN balance < 0 THEN 1 ELSE 0 END), 0) as shop_owing_count')
+            ->first();
 
         return response()->json([
-            'total_outstanding' => $owesShop,
-            'total_shop_owes' => $shopOwes,
-            'customers_who_owe_shop' => array_values(array_filter($rows, fn ($row) => $row['balance'] > 0)),
-            'customers_whom_shop_owes' => array_values(array_filter($rows, fn ($row) => $row['balance'] < 0)),
+            'total_outstanding' => (int) $totals->total_outstanding,
+            'total_shop_owes' => (int) $totals->total_shop_owes,
+            'customers_owing_count' => (int) $totals->customers_owing_count,
+            'shop_owing_count' => (int) $totals->shop_owing_count,
         ]);
     }
 
     public function topCurries(Request $request)
     {
         $filters = $this->reportRange($request);
-        $salesQuery = $this->salesQuery($filters, $request);
-        $sales = $this->applyPaidStatusFilter($salesQuery, $request->query('paid_status'))
-            ->with('items')
-            ->get();
+        $query = DB::table('sale_items')
+            ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->leftJoin('curry_items', 'curry_items.id', '=', 'sale_items.curry_item_id')
+            ->whereNotNull('sale_items.curry_item_id')
+            ->where('sales.is_reversed', false)
+            ->whereBetween('sales.sale_at', [$filters['from'], $filters['to']])
+            ->when($request->filled('customer_id'), fn ($builder) => $builder->where('sales.customer_id', (int) $request->query('customer_id')))
+            ->when($request->filled('curry_item_id'), fn ($builder) => $builder->where('sale_items.curry_item_id', (int) $request->query('curry_item_id')));
 
-        $byQuantity = [];
-        $byValue = [];
+        $query = match ($request->query('paid_status')) {
+            'fully_paid' => $query->where('sales.unpaid_kyat', '<=', 0),
+            'partially_paid' => $query->where('sales.unpaid_kyat', '>', 0)->where('sales.paid_kyat', '>', 0),
+            'unpaid' => $query->where('sales.paid_kyat', 0),
+            default => $query,
+        };
 
-        foreach ($sales as $sale) {
-            foreach ($sale->items as $item) {
-                if ($item->curry_item_id === null) {
-                    continue;
-                }
+        $query->groupBy('sale_items.curry_item_id')
+            ->select('sale_items.curry_item_id')
+            ->selectRaw('COALESCE(MAX(curry_items.name), MAX(sale_items.curry_name_snapshot)) as name')
+            ->selectRaw('SUM(sale_items.quantity) as quantity')
+            ->selectRaw('SUM(sale_items.line_total_kyat) as value');
 
-                $itemId = (string) $item->curry_item_id;
-                $byQuantity[$itemId] = ($byQuantity[$itemId] ?? 0) + (int) $item->quantity;
-                $byValue[$itemId] = ($byValue[$itemId] ?? 0) + (int) $item->line_total_kyat;
-            }
-        }
-
-        arsort($byQuantity);
-        arsort($byValue);
-
-        $itemIds = array_unique(array_merge(array_keys($byQuantity), array_keys($byValue)));
-        $itemNames = CurryItem::query()
-            ->whereIn('id', $itemIds)
-            ->pluck('name', 'id');
+        $byQuantity = (clone $query)->orderByDesc('quantity')->limit(10)->get();
+        $byValue = (clone $query)->orderByDesc('value')->limit(10)->get();
 
         return response()->json([
-            'most_sold_curry_by_quantity' => $this->resolveCurryStats(
-                array_key_first($byQuantity),
-                count($byQuantity) > 0 ? (int) current($byQuantity) : null,
-                $itemNames
-            ),
-            'most_sold_curry_by_value' => $this->resolveCurryStats(
-                array_key_first($byValue),
-                count($byValue) > 0 ? (int) current($byValue) : null,
-                $itemNames
-            ),
-            'top10_by_quantity' => $this->curryRanking($byQuantity, $itemNames, 'quantity', 10),
-            'top10_by_value' => $this->curryRanking($byValue, $itemNames, 'value', 10),
+            'most_sold_curry_by_quantity' => $this->curryStat($byQuantity->first(), 'quantity'),
+            'most_sold_curry_by_value' => $this->curryStat($byValue->first(), 'value'),
+            'top10_by_quantity' => $byQuantity->map(fn ($row) => $this->curryStat($row, 'quantity'))->values(),
+            'top10_by_value' => $byValue->map(fn ($row) => $this->curryStat($row, 'value'))->values(),
         ]);
     }
 
-    private function curryRanking(array $scores, $itemNames, string $metric, int $limit = 10): array
+    private function curryStat(?object $row, string $metric): ?array
     {
-        $rows = [];
-        $i = 0;
-
-        foreach ($scores as $itemId => $value) {
-            if ($i >= $limit) {
-                break;
-            }
-
-            $rows[] = [
-                'curry_item_id' => (int) $itemId,
-                'name' => $itemNames[(int) $itemId] ?? ('Curry #'.$itemId),
-                'metric' => $metric,
-                'value' => (int) $value,
-            ];
-            $i++;
-        }
-
-        return $rows;
-    }
-
-    private function resolveCurryStats(?string $itemId, ?int $value, $itemNames): ?array
-    {
-        if ($itemId === null || $value === null) {
+        if (! $row) {
             return null;
         }
 
         return [
-            'curry_item_id' => (int) $itemId,
-            'name' => $itemNames[(int) $itemId] ?? ('Curry #'.$itemId),
-            'value' => (int) $value,
+            'curry_item_id' => (int) $row->curry_item_id,
+            'name' => $row->name,
+            'metric' => $metric,
+            'value' => (int) $row->{$metric},
         ];
     }
 
     private function reportRange(Request $request): array
     {
+        $request->validate([
+            'range' => ['nullable', 'in:today,yesterday,this_week,this_month,custom'],
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d'],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'curry_item_id' => ['nullable', 'integer', 'exists:curry_items,id'],
+            'paid_status' => ['nullable', 'in:fully_paid,partially_paid,unpaid'],
+        ]);
         $range = $request->query('range', 'today');
         $fromInput = $request->query('from');
         $toInput = $request->query('to');
