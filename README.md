@@ -16,6 +16,10 @@ Implemented in this codebase:
 
 - Phase 1 foundations: single Laravel + React/Vite app with runtime-derived base path helpers for nested folders.
 - Functional phone-first screens for sales, customers, curry management, ledger actions, reports, PDF sharing, staff/permission management, and audit history.
+- Compact phone layouts with centered fade-in modals for secondary forms and
+  filters, capped long pickers, and collapsed low-priority report sections.
+- Installable PWA icons, including Apple and maskable variants, generated from
+  the repository's `linhtuticon.jpg` brand artwork.
 - Audited sale correction/reversal and ledger correction flows with chronological running-balance recalculation.
 - Database-backed duplicate protection for sales, payments, and money-lent actions.
 - Runtime and deployment verification checks (`npm run build:verify`), including ESLint, PWA icons, runtime paths, and compiled assets.

@@ -16,8 +16,8 @@
 
     <title>{{ config('app.name', 'Lin Htut Restaurant Ledger') }}</title>
     <link rel="manifest" href="{{ asset('manifest.webmanifest') }}">
-    <link rel="icon" type="image/png" href="{{ asset('icon-192.png') }}">
-    <link rel="apple-touch-icon" href="{{ asset('icon-192.png') }}">
+    <link rel="icon" type="image/png" sizes="48x48" href="{{ asset('icon-48.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('icon-180.png') }}">
 
     @viteReactRefresh
     @vite(['resources/css/app.css', 'resources/js/app.js'])

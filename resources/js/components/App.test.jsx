@@ -83,7 +83,7 @@ afterEach(() => cleanup());
 
 describe("restaurant ledger app shell", () => {
     it("renders a designed login form for a guest session", async () => {
-        render(<App />);
+        const { container } = render(<App />);
 
         expect(
             await screen.findByRole("heading", {
@@ -93,6 +93,10 @@ describe("restaurant ledger app shell", () => {
         expect(screen.getByLabelText("Email")).toBeVisible();
         expect(screen.getByLabelText("Password")).toBeVisible();
         expect(screen.getByRole("button", { name: "Login" })).toBeEnabled();
+        expect(container.querySelector(".brand-icon")).toHaveAttribute(
+            "src",
+            "/icon-192.png",
+        );
     });
 
     it("switches the guest interface to Myanmar without English fallback labels", async () => {
@@ -216,6 +220,27 @@ describe("restaurant ledger app shell", () => {
             await screen.findByRole("heading", { name: "Reports" }),
         ).toBeVisible();
         expect(window.location.pathname).toBe("/reports");
+    });
+
+    it("keeps report filters in a centered accessible modal", async () => {
+        window.history.replaceState({}, "", "/reports");
+        mockGet({
+            data: {
+                user: adminUser,
+                permissions: ["view_reports"],
+            },
+        });
+        render(<App />);
+
+        fireEvent.click(await screen.findByRole("button", { name: "Filters" }));
+
+        const dialog = screen.getByRole("dialog", { name: "Filters" });
+        expect(dialog).toBeVisible();
+        expect(dialog).toHaveClass("modal-dialog");
+        expect(screen.getByLabelText("Date range")).toBeVisible();
+        expect(
+            screen.getByRole("button", { name: "Apply filters" }),
+        ).toBeVisible();
     });
 
     it("redirects a direct route the user is not permitted to view", async () => {
@@ -474,6 +499,7 @@ describe("restaurant ledger app shell", () => {
         fireEvent.click(
             await screen.findByRole("button", { name: /Range Customer/ }),
         );
+        fireEvent.click(screen.getByRole("button", { name: "Filters" }));
         fireEvent.change(screen.getByLabelText("From"), {
             target: { value: "2026-08-01" },
         });

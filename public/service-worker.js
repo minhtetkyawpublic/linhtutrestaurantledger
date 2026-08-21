@@ -3,7 +3,7 @@ const APP_SCOPE_PATH = new URL(self.registration.scope).pathname.replace(
     "",
 );
 const API_PREFIX = `${APP_SCOPE_PATH}/api`;
-const STATIC_CACHE = "linh-tut-restaurant-shell-c1238fddd7dc";
+const STATIC_CACHE = "linh-tut-restaurant-shell-cf089a45cd76";
 
 self.addEventListener("install", (event) => {
     event.waitUntil(
@@ -13,8 +13,10 @@ self.addEventListener("install", (event) => {
                 cache.addAll([
                     "./offline.html",
                     "./manifest.webmanifest",
+                    "./icon-180.png",
                     "./icon-192.png",
                     "./icon-512.png",
+                    "./icon-maskable-512.png",
                 ]),
             ),
     );

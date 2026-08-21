@@ -9,11 +9,14 @@
 - Backend gate: `php artisan test`
 - Latest local migration: `2026_08_20_000008_expand_ledger_reason_column`
 - Verification date: `2026-08-20` (`Asia/Yangon`)
-- Frontend result: 18 UI tests; production build assets and service worker
-  version `c1238fddd7dc` verified
+- Frontend result: 19 UI tests; production build assets and service worker
+  version `cf089a45cd76` verified
 - Development frontend result: live Vite/React Chrome test passes with the
   refresh preamble and application CSS loaded; Vite was stopped and
   `public/hot` removed after verification
+- Compact-layout result: isolated Chrome phone preview at 390 x 844 passes
+  without horizontal overflow; report filters render as a centered fade-in
+  modal, and the captured brand icon is generated from `linhtuticon.jpg`
 - Browser result: Chrome mobile viewport (390 x 844) passed login, direct report
   route refresh, English/Myanmar layouts, logout/re-login, and offline fallback
 - Backend result: 63 tests, 405 assertions on both the default test profile and

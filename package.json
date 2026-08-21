@@ -9,6 +9,7 @@
         "test:ui": "vitest run",
         "test:browser": "node scripts/test-browser.mjs",
         "test:browser:dev": "node scripts/test-vite-browser.mjs",
+        "test:layout:dev": "node scripts/test-mobile-layout.mjs",
         "pwa:icons": "node scripts/build-pwa-icons.mjs",
         "build": "npm run pwa:icons && vite build && node scripts/build-service-worker.mjs",
         "translations:check": "node scripts/check-translations.mjs",

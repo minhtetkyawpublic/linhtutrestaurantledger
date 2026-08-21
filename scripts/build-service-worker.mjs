@@ -16,12 +16,20 @@ const templatePath = path.join(
 );
 const destinationPath = path.join(projectRoot, "public", "service-worker.js");
 
-const manifest = await fs.readFile(manifestPath, "utf8");
-const version = createHash("sha256")
-    .update(manifest)
-    .digest("hex")
-    .slice(0, 12);
 const template = await fs.readFile(templatePath, "utf8");
+const versionFiles = [
+    manifestPath,
+    templatePath,
+    path.join(projectRoot, "public", "manifest.webmanifest"),
+    path.join(projectRoot, "public", "offline.html"),
+    path.join(projectRoot, "public", "icon-180.png"),
+    path.join(projectRoot, "public", "icon-192.png"),
+    path.join(projectRoot, "public", "icon-512.png"),
+    path.join(projectRoot, "public", "icon-maskable-512.png"),
+];
+const versionHash = createHash("sha256");
+for (const file of versionFiles) versionHash.update(await fs.readFile(file));
+const version = versionHash.digest("hex").slice(0, 12);
 
 if (!template.includes("__APP_VERSION__")) {
     throw new Error("Service-worker template is missing __APP_VERSION__.");

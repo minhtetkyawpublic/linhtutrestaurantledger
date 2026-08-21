@@ -94,10 +94,12 @@ const main = async () => {
         "public/service-worker.js",
         "resources/pwa/service-worker.js",
         "scripts/build-service-worker.mjs",
-        "public/icon-192.svg",
-        "public/icon-512.svg",
+        "linhtuticon.jpg",
+        "public/icon-48.png",
+        "public/icon-180.png",
         "public/icon-192.png",
         "public/icon-512.png",
+        "public/icon-maskable-512.png",
     ];
 
     for (const relativePath of requiredFiles) {
@@ -113,9 +115,23 @@ const main = async () => {
     let expectedServiceWorkerVersion = null;
     if (manifest) {
         try {
-            const manifestText = await readText(manifest);
-            expectedServiceWorkerVersion = createHash("sha256")
-                .update(manifestText)
+            const versionFiles = [
+                "public/build/manifest.json",
+                "resources/pwa/service-worker.js",
+                "public/manifest.webmanifest",
+                "public/offline.html",
+                "public/icon-180.png",
+                "public/icon-192.png",
+                "public/icon-512.png",
+                "public/icon-maskable-512.png",
+            ];
+            const versionHash = createHash("sha256");
+            for (const relativePath of versionFiles) {
+                versionHash.update(
+                    await fs.readFile(path.join(projectRoot, relativePath)),
+                );
+            }
+            expectedServiceWorkerVersion = versionHash
                 .digest("hex")
                 .slice(0, 12);
             const json = await readJson(manifest);
@@ -341,7 +357,7 @@ const main = async () => {
         swContent.includes("__APP_VERSION__")
     ) {
         issues.push(
-            "Generated service worker does not match the current frontend build manifest.",
+            "Generated service worker does not match the current frontend and PWA shell assets.",
         );
     }
 
@@ -374,6 +390,23 @@ const main = async () => {
         if (!Array.isArray(pwaManifest.icons) || pwaManifest.icons.length < 2) {
             issues.push(
                 "PWA manifest must include install icons for phone home screens.",
+            );
+        }
+        if (
+            !pwaManifest.icons?.some((icon) =>
+                String(icon.purpose || "")
+                    .split(" ")
+                    .includes("maskable"),
+            )
+        ) {
+            issues.push("PWA manifest must include a safe maskable app icon.");
+        }
+        if (
+            pwaManifest.display !== "standalone" ||
+            pwaManifest.prefer_related_applications !== false
+        ) {
+            issues.push(
+                "PWA manifest must request standalone installation without a related native app.",
             );
         }
         if (pwaManifest.start_url !== "." || pwaManifest.scope !== ".") {

@@ -67,6 +67,29 @@ try {
         visual.pageWidth <= visual.viewportWidth + 1,
         `Login page overflows mobile viewport (${visual.pageWidth}px > ${visual.viewportWidth}px)`,
     );
+    const brandLoaded = await page
+        .locator(".brand-icon")
+        .evaluate((image) => image.complete && image.naturalWidth >= 192);
+    assert.equal(brandLoaded, true, "The Lin Htut app icon should load");
+    const installManifest = await page.evaluate(async () => {
+        const manifestLink = document.querySelector('link[rel="manifest"]');
+        const manifest = await fetch(manifestLink.href).then((item) =>
+            item.json(),
+        );
+        return {
+            display: manifest.display,
+            icons: manifest.icons,
+            startUrl: manifest.start_url,
+            scope: manifest.scope,
+        };
+    });
+    assert.equal(installManifest.display, "standalone");
+    assert.equal(installManifest.startUrl, ".");
+    assert.equal(installManifest.scope, ".");
+    assert.ok(
+        installManifest.icons.some((icon) => icon.purpose === "maskable"),
+        "Install manifest should provide a maskable icon",
+    );
 
     await page.getByLabel("Email").fill("admin@example.com");
     await page.getByLabel("Password").fill("ChangeMe123!");
@@ -99,6 +122,34 @@ try {
         path: path.join(artifacts, "mobile-reports.png"),
         fullPage: true,
     });
+
+    await page.getByRole("button", { name: "Filters" }).click();
+    await page.waitForTimeout(220);
+    const modalPosition = await page
+        .locator(".modal-dialog")
+        .evaluate((item) => {
+            const rect = item.getBoundingClientRect();
+            return {
+                top: rect.top,
+                bottom: window.innerHeight - rect.bottom,
+                centerDelta: Math.abs(
+                    rect.top + rect.height / 2 - window.innerHeight / 2,
+                ),
+            };
+        });
+    assert.ok(modalPosition.top > 8, "Modal should not attach to the top edge");
+    assert.ok(
+        modalPosition.bottom > 8,
+        "Modal should not appear as a bottom sheet",
+    );
+    assert.ok(
+        modalPosition.centerDelta < 80,
+        "Modal should be centered in the phone viewport",
+    );
+    await page.screenshot({
+        path: path.join(artifacts, "mobile-report-filters.png"),
+    });
+    await page.getByRole("button", { name: "Close" }).click();
 
     await Promise.all([
         page.waitForResponse(

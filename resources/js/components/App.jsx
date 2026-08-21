@@ -68,6 +68,61 @@ function Notice({ kind = "info", children }) {
     ) : null;
 }
 
+function BrandIcon({ small = false }) {
+    return (
+        <img
+            className={`brand-icon ${small ? "small" : ""}`}
+            src={`${APP_BASE_PATH}/icon-192.png`}
+            alt=""
+        />
+    );
+}
+
+function Modal({ title, onClose, children, wide = false }) {
+    useEffect(() => {
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        const closeOnEscape = (event) => {
+            if (event.key === "Escape") onClose();
+        };
+        document.addEventListener("keydown", closeOnEscape);
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            document.removeEventListener("keydown", closeOnEscape);
+        };
+    }, [onClose]);
+
+    return (
+        <div
+            className="modal-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+                if (event.target === event.currentTarget) onClose();
+            }}
+        >
+            <section
+                className={`modal-dialog ${wide ? "wide" : ""}`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="modal-title"
+            >
+                <header className="modal-header">
+                    <h2 id="modal-title">{title}</h2>
+                    <button
+                        type="button"
+                        className="modal-close"
+                        onClick={onClose}
+                        aria-label="Close"
+                    >
+                        ×
+                    </button>
+                </header>
+                <div className="modal-body">{children}</div>
+            </section>
+        </div>
+    );
+}
+
 function Loading({ t }) {
     return (
         <div className="loading-card">
@@ -140,7 +195,7 @@ function LoginScreen({ t, locale, onLocale, onLogin, loading, error }) {
     return (
         <main className="auth-page">
             <section className="auth-card">
-                <div className="brand-mark">LH</div>
+                <BrandIcon />
                 <p className="eyebrow">{t("restaurant_ledger")}</p>
                 <h1>{t("app_name")}</h1>
                 <p className="muted">{t("login_welcome")}</p>
@@ -1004,6 +1059,7 @@ function CustomersScreen({
         to: "",
     });
     const [showCreate, setShowCreate] = useState(false);
+    const [showLedgerFilters, setShowLedgerFilters] = useState(false);
     const emptyCustomerForm = {
         id: null,
         name: "",
@@ -1283,6 +1339,7 @@ function CustomersScreen({
         }
         setMessage({ error: "", success: "" });
         setAppliedLedgerRange({ ...ledgerRange });
+        setShowLedgerFilters(false);
     };
     const statement = async (action) => {
         try {
@@ -1341,91 +1398,93 @@ function CustomersScreen({
                     <button>{t("search")}</button>
                 </form>
                 {showCreate && (
-                    <form className="inset-form stack" onSubmit={saveCustomer}>
-                        <div className="section-heading">
-                            <h3>
-                                {customerForm.id
-                                    ? t("edit_customer")
-                                    : t("new_customer")}
-                            </h3>
-                            <button
-                                type="button"
-                                className="text-button"
-                                onClick={() => setShowCreate(false)}
-                            >
-                                {t("cancel")}
-                            </button>
-                        </div>
-                        <label>
-                            {t("name")}
-                            <input
-                                value={customerForm.name}
-                                onChange={(event) =>
-                                    setCustomerForm({
-                                        ...customerForm,
-                                        name: event.target.value,
-                                    })
-                                }
-                                required
-                            />
-                        </label>
-                        <label>
-                            {t("phone")}
-                            <input
-                                inputMode="tel"
-                                value={customerForm.phone_number}
-                                onChange={(event) =>
-                                    setCustomerForm({
-                                        ...customerForm,
-                                        phone_number: event.target.value,
-                                    })
-                                }
-                            />
-                        </label>
-                        <label>
-                            {t("address_note")}
-                            <textarea
-                                value={customerForm.address_or_note}
-                                onChange={(event) =>
-                                    setCustomerForm({
-                                        ...customerForm,
-                                        address_or_note: event.target.value,
-                                    })
-                                }
-                            />
-                        </label>
-                        <div className="two-column">
+                    <Modal
+                        title={
+                            customerForm.id
+                                ? t("edit_customer")
+                                : t("new_customer")
+                        }
+                        onClose={() => setShowCreate(false)}
+                    >
+                        <form
+                            className="inset-form stack"
+                            onSubmit={saveCustomer}
+                        >
                             <label>
-                                {t("opening_balance")}
+                                {t("name")}
                                 <input
-                                    type="number"
-                                    inputMode="numeric"
-                                    value={customerForm.opening_balance_kyat}
+                                    value={customerForm.name}
                                     onChange={(event) =>
                                         setCustomerForm({
                                             ...customerForm,
-                                            opening_balance_kyat:
-                                                event.target.value,
+                                            name: event.target.value,
+                                        })
+                                    }
+                                    required
+                                />
+                            </label>
+                            <label>
+                                {t("phone")}
+                                <input
+                                    inputMode="tel"
+                                    value={customerForm.phone_number}
+                                    onChange={(event) =>
+                                        setCustomerForm({
+                                            ...customerForm,
+                                            phone_number: event.target.value,
                                         })
                                     }
                                 />
                             </label>
                             <label>
-                                {t("reason")}
-                                <input
-                                    value={customerForm.opening_balance_reason}
+                                {t("address_note")}
+                                <textarea
+                                    value={customerForm.address_or_note}
                                     onChange={(event) =>
                                         setCustomerForm({
                                             ...customerForm,
-                                            opening_balance_reason:
-                                                event.target.value,
+                                            address_or_note: event.target.value,
                                         })
                                     }
                                 />
                             </label>
-                        </div>
-                        <button className="primary">{t("save")}</button>
-                    </form>
+                            <div className="two-column">
+                                <label>
+                                    {t("opening_balance")}
+                                    <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        value={
+                                            customerForm.opening_balance_kyat
+                                        }
+                                        onChange={(event) =>
+                                            setCustomerForm({
+                                                ...customerForm,
+                                                opening_balance_kyat:
+                                                    event.target.value,
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <label>
+                                    {t("reason")}
+                                    <input
+                                        value={
+                                            customerForm.opening_balance_reason
+                                        }
+                                        onChange={(event) =>
+                                            setCustomerForm({
+                                                ...customerForm,
+                                                opening_balance_reason:
+                                                    event.target.value,
+                                            })
+                                        }
+                                    />
+                                </label>
+                            </div>
+                            <button className="primary">{t("save")}</button>
+                        </form>
+                    </Modal>
                 )}
                 <div className="customer-list">
                     {customers.map((customer) => (
@@ -1467,52 +1526,57 @@ function CustomersScreen({
                                     {selected.phone_number || t("no_phone")}
                                 </small>
                             </div>
-                            <div className="button-row">
-                                {hasPermission(
-                                    permissions,
-                                    "view_customer_statements",
-                                ) && (
-                                    <button
-                                        className="secondary compact"
-                                        onClick={() => statement("share")}
-                                    >
-                                        {t("share_statement")}
-                                    </button>
-                                )}
-                                {hasPermission(
-                                    permissions,
-                                    "view_customer_statements",
-                                ) && (
-                                    <button
-                                        className="secondary compact"
-                                        onClick={() => statement("save")}
-                                    >
-                                        {t("save_statement")}
-                                    </button>
-                                )}
-                                {hasPermission(
-                                    permissions,
-                                    "create_edit_customers",
-                                ) && (
-                                    <button
-                                        className="secondary compact"
-                                        onClick={editCustomer}
-                                    >
-                                        {t("edit")}
-                                    </button>
-                                )}
-                                {hasPermission(
-                                    permissions,
-                                    "create_edit_customers",
-                                ) && (
-                                    <button
-                                        className="danger-link"
-                                        onClick={archiveCustomer}
-                                    >
-                                        {t("archive")}
-                                    </button>
-                                )}
-                            </div>
+                            <details className="inline-disclosure">
+                                <summary className="secondary compact">
+                                    {t("more")}
+                                </summary>
+                                <div className="button-row">
+                                    {hasPermission(
+                                        permissions,
+                                        "view_customer_statements",
+                                    ) && (
+                                        <button
+                                            className="secondary compact"
+                                            onClick={() => statement("share")}
+                                        >
+                                            {t("share_statement")}
+                                        </button>
+                                    )}
+                                    {hasPermission(
+                                        permissions,
+                                        "view_customer_statements",
+                                    ) && (
+                                        <button
+                                            className="secondary compact"
+                                            onClick={() => statement("save")}
+                                        >
+                                            {t("save_statement")}
+                                        </button>
+                                    )}
+                                    {hasPermission(
+                                        permissions,
+                                        "create_edit_customers",
+                                    ) && (
+                                        <button
+                                            className="secondary compact"
+                                            onClick={editCustomer}
+                                        >
+                                            {t("edit")}
+                                        </button>
+                                    )}
+                                    {hasPermission(
+                                        permissions,
+                                        "create_edit_customers",
+                                    ) && (
+                                        <button
+                                            className="danger-link"
+                                            onClick={archiveCustomer}
+                                        >
+                                            {t("archive")}
+                                        </button>
+                                    )}
+                                </div>
+                            </details>
                         </div>
                         <Balance
                             large
@@ -1574,247 +1638,305 @@ function CustomersScreen({
                             )}
                         </div>
                         {moneyForm.type && (
-                            <form
-                                className="inset-form stack"
-                                onSubmit={recordMoney}
-                            >
-                                <h3>
-                                    {moneyForm.type === "payment"
+                            <Modal
+                                title={
+                                    moneyForm.type === "payment"
                                         ? t("customer_pays_shop")
-                                        : t("customer_receives_money")}
-                                </h3>
-                                <div className="two-column">
+                                        : t("customer_receives_money")
+                                }
+                                onClose={() =>
+                                    setMoneyForm({
+                                        ...moneyForm,
+                                        type: "",
+                                        occurred_at: "",
+                                    })
+                                }
+                            >
+                                <form
+                                    className="inset-form stack"
+                                    onSubmit={recordMoney}
+                                >
+                                    <div className="two-column">
+                                        <label>
+                                            {t("amount")}
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                inputMode="numeric"
+                                                value={moneyForm.amount_kyat}
+                                                onChange={(event) =>
+                                                    setMoneyForm({
+                                                        ...moneyForm,
+                                                        amount_kyat:
+                                                            event.target.value,
+                                                    })
+                                                }
+                                                required
+                                            />
+                                        </label>
+                                        <label>
+                                            {t("reason")}
+                                            <input
+                                                value={moneyForm.reason}
+                                                onChange={(event) =>
+                                                    setMoneyForm({
+                                                        ...moneyForm,
+                                                        reason: event.target
+                                                            .value,
+                                                    })
+                                                }
+                                                required
+                                            />
+                                        </label>
+                                    </div>
                                     <label>
-                                        {t("amount")}
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            inputMode="numeric"
-                                            value={moneyForm.amount_kyat}
+                                        {t("note")}
+                                        <textarea
+                                            value={moneyForm.note}
                                             onChange={(event) =>
                                                 setMoneyForm({
                                                     ...moneyForm,
-                                                    amount_kyat:
-                                                        event.target.value,
+                                                    note: event.target.value,
                                                 })
                                             }
-                                            required
                                         />
                                     </label>
-                                    <label>
-                                        {t("reason")}
-                                        <input
-                                            value={moneyForm.reason}
-                                            onChange={(event) =>
+                                    {hasPermission(
+                                        permissions,
+                                        "backdate_sale",
+                                    ) && (
+                                        <label>
+                                            {t("date_time")}
+                                            <input
+                                                type="datetime-local"
+                                                value={moneyForm.occurred_at}
+                                                max={nowForInput()}
+                                                onChange={(event) =>
+                                                    setMoneyForm({
+                                                        ...moneyForm,
+                                                        occurred_at:
+                                                            event.target.value,
+                                                    })
+                                                }
+                                                required
+                                            />
+                                        </label>
+                                    )}
+                                    <div className="button-row">
+                                        <button
+                                            type="button"
+                                            className="ghost"
+                                            onClick={() =>
                                                 setMoneyForm({
                                                     ...moneyForm,
-                                                    reason: event.target.value,
+                                                    type: "",
+                                                    occurred_at: "",
                                                 })
                                             }
-                                            required
-                                        />
-                                    </label>
-                                </div>
-                                <label>
-                                    {t("note")}
-                                    <textarea
-                                        value={moneyForm.note}
-                                        onChange={(event) =>
-                                            setMoneyForm({
-                                                ...moneyForm,
-                                                note: event.target.value,
-                                            })
-                                        }
-                                    />
-                                </label>
-                                {hasPermission(
-                                    permissions,
-                                    "backdate_sale",
-                                ) && (
-                                    <label>
-                                        {t("date_time")}
-                                        <input
-                                            type="datetime-local"
-                                            value={moneyForm.occurred_at}
-                                            max={nowForInput()}
-                                            onChange={(event) =>
-                                                setMoneyForm({
-                                                    ...moneyForm,
-                                                    occurred_at:
-                                                        event.target.value,
-                                                })
-                                            }
-                                            required
-                                        />
-                                    </label>
-                                )}
-                                <div className="button-row">
-                                    <button
-                                        type="button"
-                                        className="ghost"
-                                        onClick={() =>
-                                            setMoneyForm({
-                                                ...moneyForm,
-                                                type: "",
-                                                occurred_at: "",
-                                            })
-                                        }
-                                    >
-                                        {t("cancel")}
-                                    </button>
-                                    <button
-                                        className="primary"
-                                        disabled={moneySaving}
-                                    >
-                                        {moneySaving ? t("saving") : t("save")}
-                                    </button>
-                                </div>
-                            </form>
+                                        >
+                                            {t("cancel")}
+                                        </button>
+                                        <button
+                                            className="primary"
+                                            disabled={moneySaving}
+                                        >
+                                            {moneySaving
+                                                ? t("saving")
+                                                : t("save")}
+                                        </button>
+                                    </div>
+                                </form>
+                            </Modal>
                         )}
                         {correctionForm && (
-                            <form
-                                className="inset-form stack"
-                                onSubmit={correctEntry}
+                            <Modal
+                                title={t("correct_ledger_entry")}
+                                onClose={() => setCorrectionForm(null)}
                             >
-                                <h3>{t("correct_ledger_entry")}</h3>
-                                <p className="muted">
-                                    {t(`event_${correctionForm.event_type}`)}
-                                </p>
-                                <div className="two-column">
+                                <form
+                                    className="inset-form stack"
+                                    onSubmit={correctEntry}
+                                >
+                                    <p className="muted">
+                                        {t(
+                                            `event_${correctionForm.event_type}`,
+                                        )}
+                                    </p>
+                                    <div className="two-column">
+                                        <label>
+                                            {t("corrected_amount")}
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                inputMode="numeric"
+                                                value={
+                                                    correctionForm.amount_kyat
+                                                }
+                                                onChange={(event) =>
+                                                    setCorrectionForm({
+                                                        ...correctionForm,
+                                                        amount_kyat:
+                                                            event.target.value,
+                                                    })
+                                                }
+                                                required
+                                            />
+                                        </label>
+                                        <label>
+                                            {t("correction_reason")}
+                                            <input
+                                                value={correctionForm.reason}
+                                                onChange={(event) =>
+                                                    setCorrectionForm({
+                                                        ...correctionForm,
+                                                        reason: event.target
+                                                            .value,
+                                                    })
+                                                }
+                                                required
+                                            />
+                                        </label>
+                                    </div>
+                                    {hasPermission(
+                                        permissions,
+                                        "backdate_sale",
+                                    ) && (
+                                        <label>
+                                            {t("date_time")}
+                                            <input
+                                                type="datetime-local"
+                                                value={
+                                                    correctionForm.occurred_at
+                                                }
+                                                max={nowForInput()}
+                                                onChange={(event) =>
+                                                    setCorrectionForm({
+                                                        ...correctionForm,
+                                                        occurred_at:
+                                                            event.target.value,
+                                                    })
+                                                }
+                                                required
+                                            />
+                                        </label>
+                                    )}
                                     <label>
-                                        {t("corrected_amount")}
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            inputMode="numeric"
-                                            value={correctionForm.amount_kyat}
+                                        {t("note")}
+                                        <textarea
+                                            value={correctionForm.note}
                                             onChange={(event) =>
                                                 setCorrectionForm({
                                                     ...correctionForm,
-                                                    amount_kyat:
-                                                        event.target.value,
+                                                    note: event.target.value,
                                                 })
                                             }
-                                            required
                                         />
                                     </label>
-                                    <label>
-                                        {t("correction_reason")}
-                                        <input
-                                            value={correctionForm.reason}
-                                            onChange={(event) =>
-                                                setCorrectionForm({
-                                                    ...correctionForm,
-                                                    reason: event.target.value,
-                                                })
+                                    <div className="button-row">
+                                        <button
+                                            type="button"
+                                            className="ghost"
+                                            onClick={() =>
+                                                setCorrectionForm(null)
                                             }
-                                            required
-                                        />
-                                    </label>
-                                </div>
-                                {hasPermission(
-                                    permissions,
-                                    "backdate_sale",
-                                ) && (
-                                    <label>
-                                        {t("date_time")}
-                                        <input
-                                            type="datetime-local"
-                                            value={correctionForm.occurred_at}
-                                            max={nowForInput()}
-                                            onChange={(event) =>
-                                                setCorrectionForm({
-                                                    ...correctionForm,
-                                                    occurred_at:
-                                                        event.target.value,
-                                                })
-                                            }
-                                            required
-                                        />
-                                    </label>
-                                )}
-                                <label>
-                                    {t("note")}
-                                    <textarea
-                                        value={correctionForm.note}
-                                        onChange={(event) =>
-                                            setCorrectionForm({
-                                                ...correctionForm,
-                                                note: event.target.value,
-                                            })
-                                        }
-                                    />
-                                </label>
-                                <div className="button-row">
-                                    <button
-                                        type="button"
-                                        className="ghost"
-                                        onClick={() => setCorrectionForm(null)}
-                                    >
-                                        {t("cancel")}
-                                    </button>
-                                    <button
-                                        className="primary"
-                                        disabled={correctionSaving}
-                                    >
-                                        {correctionSaving
-                                            ? t("saving")
-                                            : t("save_entry_correction")}
-                                    </button>
-                                </div>
-                            </form>
+                                        >
+                                            {t("cancel")}
+                                        </button>
+                                        <button
+                                            className="primary"
+                                            disabled={correctionSaving}
+                                        >
+                                            {correctionSaving
+                                                ? t("saving")
+                                                : t("save_entry_correction")}
+                                        </button>
+                                    </div>
+                                </form>
+                            </Modal>
                         )}
                         {hasPermission(
                             permissions,
                             "view_customer_statements",
                         ) && (
-                            <form
-                                className="filter-grid ledger-filter"
-                                onSubmit={applyLedgerFilter}
-                            >
-                                <label>
-                                    {t("from")}
-                                    <input
-                                        type="date"
-                                        value={ledgerRange.from}
-                                        onChange={(event) =>
-                                            setLedgerRange((current) => ({
-                                                ...current,
-                                                from: event.target.value,
-                                            }))
-                                        }
-                                    />
-                                </label>
-                                <label>
-                                    {t("to")}
-                                    <input
-                                        type="date"
-                                        value={ledgerRange.to}
-                                        onChange={(event) =>
-                                            setLedgerRange((current) => ({
-                                                ...current,
-                                                to: event.target.value,
-                                            }))
-                                        }
-                                    />
-                                </label>
-                                <button className="secondary" type="submit">
-                                    {t("apply_filter")}
-                                </button>
+                            <>
                                 <button
-                                    className="ghost"
                                     type="button"
-                                    onClick={() => {
-                                        setLedgerRange({ from: "", to: "" });
-                                        setAppliedLedgerRange({
-                                            from: "",
-                                            to: "",
-                                        });
-                                    }}
+                                    className="secondary compact"
+                                    onClick={() => setShowLedgerFilters(true)}
                                 >
-                                    {t("clear_filter")}
+                                    {t("filters")}
                                 </button>
-                            </form>
+                                {showLedgerFilters && (
+                                    <Modal
+                                        title={t("filters")}
+                                        onClose={() =>
+                                            setShowLedgerFilters(false)
+                                        }
+                                    >
+                                        <form
+                                            className="filter-grid ledger-filter"
+                                            onSubmit={applyLedgerFilter}
+                                        >
+                                            <label>
+                                                {t("from")}
+                                                <input
+                                                    type="date"
+                                                    value={ledgerRange.from}
+                                                    onChange={(event) =>
+                                                        setLedgerRange(
+                                                            (current) => ({
+                                                                ...current,
+                                                                from: event
+                                                                    .target
+                                                                    .value,
+                                                            }),
+                                                        )
+                                                    }
+                                                />
+                                            </label>
+                                            <label>
+                                                {t("to")}
+                                                <input
+                                                    type="date"
+                                                    value={ledgerRange.to}
+                                                    onChange={(event) =>
+                                                        setLedgerRange(
+                                                            (current) => ({
+                                                                ...current,
+                                                                to: event.target
+                                                                    .value,
+                                                            }),
+                                                        )
+                                                    }
+                                                />
+                                            </label>
+                                            <button
+                                                className="secondary"
+                                                type="submit"
+                                            >
+                                                {t("apply_filter")}
+                                            </button>
+                                            <button
+                                                className="ghost"
+                                                type="button"
+                                                onClick={() => {
+                                                    setLedgerRange({
+                                                        from: "",
+                                                        to: "",
+                                                    });
+                                                    setAppliedLedgerRange({
+                                                        from: "",
+                                                        to: "",
+                                                    });
+                                                    setShowLedgerFilters(false);
+                                                }}
+                                            >
+                                                {t("clear_filter")}
+                                            </button>
+                                        </form>
+                                    </Modal>
+                                )}
+                            </>
                         )}
                         <div className="section-heading">
                             <h3>{t("activity")}</h3>
@@ -1927,6 +2049,7 @@ function CustomersScreen({
 }
 
 function ReportsScreen({ t }) {
+    const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState({
         range: "today",
         from: "",
@@ -2003,128 +2126,184 @@ function ReportsScreen({ t }) {
             <section className="panel stack">
                 <div className="section-heading">
                     <h2>{t("reports")}</h2>
-                    <button className="text-button" onClick={load}>
-                        {t("refresh")}
-                    </button>
-                </div>
-                <div className="filter-grid">
-                    <label>
-                        {t("date_range")}
-                        <select
-                            value={filters.range}
-                            onChange={(event) =>
-                                change("range", event.target.value)
-                            }
+                    <div className="button-row">
+                        <button
+                            className="secondary compact"
+                            onClick={() => setShowFilters(true)}
                         >
-                            <option value="today">{t("today")}</option>
-                            <option value="yesterday">{t("yesterday")}</option>
-                            <option value="this_week">{t("this_week")}</option>
-                            <option value="this_month">
-                                {t("this_month")}
-                            </option>
-                            <option value="custom">{t("custom")}</option>
-                        </select>
-                    </label>
-                    {filters.range === "custom" && (
-                        <>
+                            {t("filters")}
+                        </button>
+                        <button className="text-button" onClick={load}>
+                            {t("refresh")}
+                        </button>
+                    </div>
+                </div>
+                <small>
+                    {t("date_range")}: {t(filters.range)}
+                </small>
+                {showFilters && (
+                    <Modal
+                        title={t("filters")}
+                        onClose={() => setShowFilters(false)}
+                        wide
+                    >
+                        <div className="filter-grid modal-filter-grid">
                             <label>
-                                {t("from")}
-                                <input
-                                    type="date"
-                                    value={filters.from}
+                                {t("date_range")}
+                                <select
+                                    value={filters.range}
                                     onChange={(event) =>
-                                        change("from", event.target.value)
+                                        change("range", event.target.value)
                                     }
-                                />
+                                >
+                                    <option value="today">{t("today")}</option>
+                                    <option value="yesterday">
+                                        {t("yesterday")}
+                                    </option>
+                                    <option value="this_week">
+                                        {t("this_week")}
+                                    </option>
+                                    <option value="this_month">
+                                        {t("this_month")}
+                                    </option>
+                                    <option value="custom">
+                                        {t("custom")}
+                                    </option>
+                                </select>
+                            </label>
+                            {filters.range === "custom" && (
+                                <>
+                                    <label>
+                                        {t("from")}
+                                        <input
+                                            type="date"
+                                            value={filters.from}
+                                            onChange={(event) =>
+                                                change(
+                                                    "from",
+                                                    event.target.value,
+                                                )
+                                            }
+                                        />
+                                    </label>
+                                    <label>
+                                        {t("to")}
+                                        <input
+                                            type="date"
+                                            value={filters.to}
+                                            onChange={(event) =>
+                                                change("to", event.target.value)
+                                            }
+                                        />
+                                    </label>
+                                </>
+                            )}
+                            <label>
+                                {t("customer")}
+                                <select
+                                    value={filters.customer_id}
+                                    onChange={(event) =>
+                                        change(
+                                            "customer_id",
+                                            event.target.value,
+                                        )
+                                    }
+                                >
+                                    <option value="">{t("all")}</option>
+                                    {options.customers.map((customer) => (
+                                        <option
+                                            key={customer.id}
+                                            value={customer.id}
+                                        >
+                                            {customer.name}
+                                            {customer.is_archived
+                                                ? ` (${t("archived")})`
+                                                : ""}
+                                        </option>
+                                    ))}
+                                </select>
                             </label>
                             <label>
-                                {t("to")}
-                                <input
-                                    type="date"
-                                    value={filters.to}
+                                {t("category")}
+                                <select
+                                    value={filters.curry_category_id}
                                     onChange={(event) =>
-                                        change("to", event.target.value)
+                                        change(
+                                            "curry_category_id",
+                                            event.target.value,
+                                        )
                                     }
-                                />
+                                >
+                                    <option value="">{t("all")}</option>
+                                    {options.categories.map((category) => (
+                                        <option
+                                            key={category.id}
+                                            value={category.id}
+                                        >
+                                            {category.name}
+                                            {!category.is_active
+                                                ? ` (${t("inactive")})`
+                                                : ""}
+                                        </option>
+                                    ))}
+                                </select>
                             </label>
-                        </>
-                    )}
-                    <label>
-                        {t("customer")}
-                        <select
-                            value={filters.customer_id}
-                            onChange={(event) =>
-                                change("customer_id", event.target.value)
-                            }
-                        >
-                            <option value="">{t("all")}</option>
-                            {options.customers.map((customer) => (
-                                <option key={customer.id} value={customer.id}>
-                                    {customer.name}
-                                    {customer.is_archived
-                                        ? ` (${t("archived")})`
-                                        : ""}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <label>
-                        {t("category")}
-                        <select
-                            value={filters.curry_category_id}
-                            onChange={(event) =>
-                                change("curry_category_id", event.target.value)
-                            }
-                        >
-                            <option value="">{t("all")}</option>
-                            {options.categories.map((category) => (
-                                <option key={category.id} value={category.id}>
-                                    {category.name}
-                                    {!category.is_active
-                                        ? ` (${t("inactive")})`
-                                        : ""}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <label>
-                        {t("curry")}
-                        <select
-                            value={filters.curry_item_id}
-                            onChange={(event) =>
-                                change("curry_item_id", event.target.value)
-                            }
-                        >
-                            <option value="">{t("all")}</option>
-                            {options.curries.map((curry) => (
-                                <option key={curry.id} value={curry.id}>
-                                    {curry.name}
-                                    {curry.is_archived
-                                        ? ` (${t("archived")})`
-                                        : ""}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <label>
-                        {t("payment_status")}
-                        <select
-                            value={filters.paid_status}
-                            onChange={(event) =>
-                                change("paid_status", event.target.value)
-                            }
-                        >
-                            <option value="">{t("all")}</option>
-                            <option value="fully_paid">
-                                {t("fully_paid")}
-                            </option>
-                            <option value="partially_paid">
-                                {t("partially_paid")}
-                            </option>
-                            <option value="unpaid">{t("unpaid")}</option>
-                        </select>
-                    </label>
-                </div>
+                            <label>
+                                {t("curry")}
+                                <select
+                                    value={filters.curry_item_id}
+                                    onChange={(event) =>
+                                        change(
+                                            "curry_item_id",
+                                            event.target.value,
+                                        )
+                                    }
+                                >
+                                    <option value="">{t("all")}</option>
+                                    {options.curries.map((curry) => (
+                                        <option key={curry.id} value={curry.id}>
+                                            {curry.name}
+                                            {curry.is_archived
+                                                ? ` (${t("archived")})`
+                                                : ""}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label>
+                                {t("payment_status")}
+                                <select
+                                    value={filters.paid_status}
+                                    onChange={(event) =>
+                                        change(
+                                            "paid_status",
+                                            event.target.value,
+                                        )
+                                    }
+                                >
+                                    <option value="">{t("all")}</option>
+                                    <option value="fully_paid">
+                                        {t("fully_paid")}
+                                    </option>
+                                    <option value="partially_paid">
+                                        {t("partially_paid")}
+                                    </option>
+                                    <option value="unpaid">
+                                        {t("unpaid")}
+                                    </option>
+                                </select>
+                            </label>
+                        </div>
+                        <div className="button-row modal-actions">
+                            <button
+                                className="primary"
+                                onClick={() => setShowFilters(false)}
+                            >
+                                {t("apply_filters")}
+                            </button>
+                        </div>
+                    </Modal>
+                )}
                 <Notice kind="error">{error}</Notice>
                 <div className="report-grid">
                     {metrics.map(([label, field, format]) => (
@@ -2154,8 +2333,10 @@ function ReportsScreen({ t }) {
                     </article>
                 </div>
             </section>
-            <section className="panel">
-                <h3>{t("top_curries")}</h3>
+            <details className="panel collapsible-panel">
+                <summary className="compact-summary">
+                    {t("top_curries")}
+                </summary>
                 <div className="stat-grid">
                     <article className="stat-card orange">
                         <span>{t("most_sold_quantity")}</span>
@@ -2181,7 +2362,7 @@ function ReportsScreen({ t }) {
                         </small>
                     </article>
                 </div>
-            </section>
+            </details>
         </div>
     );
 }
@@ -2297,171 +2478,175 @@ function SalesManager({ t, permissions, online }) {
             </div>
             <Notice kind="error">{error}</Notice>
             {editing && (
-                <form className="inset-form stack" onSubmit={saveEdit}>
-                    <div className="section-heading">
-                        <h3>{t("edit_sale")}</h3>
-                        <button
-                            type="button"
-                            className="text-button"
-                            onClick={() => setEditing(null)}
-                        >
-                            {t("cancel")}
-                        </button>
-                    </div>
-                    <label className="check-row">
-                        <input
-                            type="checkbox"
-                            checked={editing.is_walk_in}
-                            onChange={(event) =>
-                                setEditing({
-                                    ...editing,
-                                    is_walk_in: event.target.checked,
-                                    customer_id: "",
-                                })
-                            }
-                        />
-                        {t("walkin")}
-                    </label>
-                    {!editing.is_walk_in && (
-                        <label>
-                            {t("customer")}
-                            <select
-                                value={editing.customer_id}
+                <Modal
+                    title={t("edit_sale")}
+                    onClose={() => setEditing(null)}
+                    wide
+                >
+                    <form className="inset-form stack" onSubmit={saveEdit}>
+                        <label className="check-row">
+                            <input
+                                type="checkbox"
+                                checked={editing.is_walk_in}
                                 onChange={(event) =>
                                     setEditing({
                                         ...editing,
-                                        customer_id: event.target.value,
+                                        is_walk_in: event.target.checked,
+                                        customer_id: "",
                                     })
                                 }
-                                required
-                            >
-                                <option value="">{t("select_customer")}</option>
-                                {customers.map((customer) => (
-                                    <option
-                                        key={customer.id}
-                                        value={customer.id}
-                                    >
-                                        {customer.name}
-                                    </option>
-                                ))}
-                            </select>
+                            />
+                            {t("walkin")}
                         </label>
-                    )}
-                    <div className="list">
-                        {editing.items.map((item, index) => (
-                            <div
-                                className="order-row"
-                                key={`${item.curry_item_id}-${index}`}
-                            >
+                        {!editing.is_walk_in && (
+                            <label>
+                                {t("customer")}
                                 <select
-                                    value={item.curry_item_id}
+                                    value={editing.customer_id}
                                     onChange={(event) =>
-                                        setEditing((current) => ({
-                                            ...current,
-                                            items: current.items.map(
-                                                (line, itemIndex) =>
-                                                    itemIndex === index
-                                                        ? {
-                                                              ...line,
-                                                              curry_item_id:
-                                                                  event.target
-                                                                      .value,
-                                                          }
-                                                        : line,
-                                            ),
-                                        }))
+                                        setEditing({
+                                            ...editing,
+                                            customer_id: event.target.value,
+                                        })
                                     }
+                                    required
                                 >
-                                    {curries.map((curry) => (
-                                        <option key={curry.id} value={curry.id}>
-                                            {curry.name}
+                                    <option value="">
+                                        {t("select_customer")}
+                                    </option>
+                                    {customers.map((customer) => (
+                                        <option
+                                            key={customer.id}
+                                            value={customer.id}
+                                        >
+                                            {customer.name}
                                         </option>
                                     ))}
                                 </select>
+                            </label>
+                        )}
+                        <div className="list">
+                            {editing.items.map((item, index) => (
+                                <div
+                                    className="order-row"
+                                    key={`${item.curry_item_id}-${index}`}
+                                >
+                                    <select
+                                        value={item.curry_item_id}
+                                        onChange={(event) =>
+                                            setEditing((current) => ({
+                                                ...current,
+                                                items: current.items.map(
+                                                    (line, itemIndex) =>
+                                                        itemIndex === index
+                                                            ? {
+                                                                  ...line,
+                                                                  curry_item_id:
+                                                                      event
+                                                                          .target
+                                                                          .value,
+                                                              }
+                                                            : line,
+                                                ),
+                                            }))
+                                        }
+                                    >
+                                        {curries.map((curry) => (
+                                            <option
+                                                key={curry.id}
+                                                value={curry.id}
+                                            >
+                                                {curry.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={item.quantity}
+                                        onChange={(event) =>
+                                            setItemQuantity(
+                                                index,
+                                                event.target.value,
+                                            )
+                                        }
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <div className="two-column">
+                            <label>
+                                {t("discount")}
                                 <input
                                     type="number"
-                                    min="1"
-                                    value={item.quantity}
+                                    min="0"
+                                    value={editing.discount_kyat}
                                     onChange={(event) =>
-                                        setItemQuantity(
-                                            index,
-                                            event.target.value,
-                                        )
+                                        setEditing({
+                                            ...editing,
+                                            discount_kyat: event.target.value,
+                                        })
                                     }
                                 />
-                            </div>
-                        ))}
-                    </div>
-                    <div className="two-column">
+                            </label>
+                            <label>
+                                {t("paid_amount")}
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={editing.paid_kyat}
+                                    onChange={(event) =>
+                                        setEditing({
+                                            ...editing,
+                                            paid_kyat: event.target.value,
+                                        })
+                                    }
+                                />
+                            </label>
+                        </div>
                         <label>
-                            {t("discount")}
+                            {t("sale_date_time")}
                             <input
-                                type="number"
-                                min="0"
-                                value={editing.discount_kyat}
+                                type="datetime-local"
+                                value={editing.sale_at}
                                 onChange={(event) =>
                                     setEditing({
                                         ...editing,
-                                        discount_kyat: event.target.value,
+                                        sale_at: event.target.value,
                                     })
                                 }
                             />
                         </label>
                         <label>
-                            {t("paid_amount")}
-                            <input
-                                type="number"
-                                min="0"
-                                value={editing.paid_kyat}
+                            {t("note")}
+                            <textarea
+                                value={editing.note}
                                 onChange={(event) =>
                                     setEditing({
                                         ...editing,
-                                        paid_kyat: event.target.value,
+                                        note: event.target.value,
                                     })
                                 }
                             />
                         </label>
-                    </div>
-                    <label>
-                        {t("sale_date_time")}
-                        <input
-                            type="datetime-local"
-                            value={editing.sale_at}
-                            onChange={(event) =>
-                                setEditing({
-                                    ...editing,
-                                    sale_at: event.target.value,
-                                })
-                            }
-                        />
-                    </label>
-                    <label>
-                        {t("note")}
-                        <textarea
-                            value={editing.note}
-                            onChange={(event) =>
-                                setEditing({
-                                    ...editing,
-                                    note: event.target.value,
-                                })
-                            }
-                        />
-                    </label>
-                    <label>
-                        {t("correction_reason")}
-                        <input
-                            value={editing.reason}
-                            onChange={(event) =>
-                                setEditing({
-                                    ...editing,
-                                    reason: event.target.value,
-                                })
-                            }
-                            required
-                        />
-                    </label>
-                    <button className="primary">{t("save_correction")}</button>
-                </form>
+                        <label>
+                            {t("correction_reason")}
+                            <input
+                                value={editing.reason}
+                                onChange={(event) =>
+                                    setEditing({
+                                        ...editing,
+                                        reason: event.target.value,
+                                    })
+                                }
+                                required
+                            />
+                        </label>
+                        <button className="primary">
+                            {t("save_correction")}
+                        </button>
+                    </form>
+                </Modal>
             )}
             {sales.length ? (
                 <div className="list">
@@ -2578,6 +2763,8 @@ function SalesManager({ t, permissions, online }) {
 function CurryManager({ t }) {
     const [categories, setCategories] = useState([]);
     const [items, setItems] = useState([]);
+    const [showCategoryForm, setShowCategoryForm] = useState(false);
+    const [showItemForm, setShowItemForm] = useState(false);
     const emptyCategoryForm = {
         id: null,
         name: "",
@@ -2632,6 +2819,7 @@ function CurryManager({ t }) {
                 await apiClient.post("/curry-categories", payload);
             }
             setCategoryForm({ ...emptyCategoryForm });
+            setShowCategoryForm(false);
             await load();
             setSuccess(t("changes_saved"));
         } catch (error) {
@@ -2655,13 +2843,14 @@ function CurryManager({ t }) {
                 await apiClient.put(`/curry-items/${form.id}`, payload);
             else await apiClient.post("/curry-items", payload);
             setForm({ ...emptyForm });
+            setShowItemForm(false);
             await load();
             setSuccess(t("changes_saved"));
         } catch (error) {
             setError(errorMessage(error, t("save_failed")));
         }
     };
-    const editItem = (item) =>
+    const editItem = (item) => {
         setForm({
             id: item.id,
             name: item.name,
@@ -2670,6 +2859,8 @@ function CurryManager({ t }) {
             display_order: item.display_order || 0,
             is_available: item.is_available,
         });
+        setShowItemForm(true);
+    };
     const archive = async (item) => {
         if (!window.confirm(t("confirm_archive"))) return;
         setError("");
@@ -2684,195 +2875,218 @@ function CurryManager({ t }) {
     };
     return (
         <section className="panel stack-lg">
-            <h2>{t("curry_management")}</h2>
+            <div className="section-heading">
+                <h2>{t("curry_management")}</h2>
+                <div className="button-row">
+                    <button
+                        className="secondary compact"
+                        onClick={() => {
+                            setCategoryForm({ ...emptyCategoryForm });
+                            setShowCategoryForm(true);
+                        }}
+                    >
+                        {t("new_category")}
+                    </button>
+                    <button
+                        className="primary compact"
+                        onClick={() => {
+                            setForm({ ...emptyForm });
+                            setShowItemForm(true);
+                        }}
+                    >
+                        {t("new_curry")}
+                    </button>
+                </div>
+            </div>
             <Notice kind="error">{error}</Notice>
             <Notice kind="success">{success}</Notice>
             <div className="management-grid">
-                <form className="inset-form stack" onSubmit={saveCategory}>
-                    <div className="section-heading">
-                        <h3>
-                            {categoryForm.id
+                {showCategoryForm && (
+                    <Modal
+                        title={
+                            categoryForm.id
                                 ? t("edit_category")
-                                : t("new_category")}
-                        </h3>
-                        {categoryForm.id && (
-                            <button
-                                type="button"
-                                className="text-button"
-                                onClick={() =>
-                                    setCategoryForm({ ...emptyCategoryForm })
-                                }
-                            >
-                                {t("cancel")}
-                            </button>
-                        )}
-                    </div>
-                    <label>
-                        {t("category_name")}
-                        <input
-                            value={categoryForm.name}
-                            onChange={(event) =>
-                                setCategoryForm({
-                                    ...categoryForm,
-                                    name: event.target.value,
-                                })
-                            }
-                            required
-                        />
-                    </label>
-                    <label>
-                        {t("display_order")}
-                        <input
-                            type="number"
-                            min="0"
-                            value={categoryForm.display_order}
-                            onChange={(event) =>
-                                setCategoryForm({
-                                    ...categoryForm,
-                                    display_order: event.target.value,
-                                })
-                            }
-                        />
-                    </label>
-                    <label className="check-row">
-                        <input
-                            type="checkbox"
-                            checked={categoryForm.is_active}
-                            onChange={(event) =>
-                                setCategoryForm({
-                                    ...categoryForm,
-                                    is_active: event.target.checked,
-                                })
-                            }
-                        />
-                        {t("active")}
-                    </label>
-                    <button className="secondary">{t("save")}</button>
-                    <div className="list">
-                        {categories.map((category) => (
-                            <div className="list-row" key={category.id}>
-                                <div>
-                                    <strong>{category.name}</strong>
-                                    <small>
-                                        {category.is_active
-                                            ? t("active")
-                                            : t("inactive")}{" "}
-                                        · #{category.display_order}
-                                    </small>
-                                </div>
-                                <button
-                                    type="button"
-                                    className="text-button"
-                                    onClick={() =>
+                                : t("new_category")
+                        }
+                        onClose={() => setShowCategoryForm(false)}
+                    >
+                        <form
+                            className="inset-form stack"
+                            onSubmit={saveCategory}
+                        >
+                            <label>
+                                {t("category_name")}
+                                <input
+                                    value={categoryForm.name}
+                                    onChange={(event) =>
                                         setCategoryForm({
-                                            id: category.id,
-                                            name: category.name,
-                                            display_order:
-                                                category.display_order || 0,
-                                            is_active: category.is_active,
+                                            ...categoryForm,
+                                            name: event.target.value,
                                         })
                                     }
-                                >
-                                    {t("edit")}
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                </form>
-                <form className="inset-form stack" onSubmit={saveItem}>
-                    <div className="section-heading">
-                        <h3>{form.id ? t("edit_curry") : t("new_curry")}</h3>
-                        {form.id && (
-                            <button
-                                type="button"
-                                className="text-button"
-                                onClick={() => setForm({ ...emptyForm })}
-                            >
-                                {t("cancel")}
-                            </button>
-                        )}
-                    </div>
-                    <label>
-                        {t("name")}
-                        <input
-                            value={form.name}
-                            onChange={(event) =>
-                                setForm({ ...form, name: event.target.value })
-                            }
-                            required
-                        />
-                    </label>
-                    <div className="two-column">
-                        <label>
-                            {t("price")}
-                            <input
-                                type="number"
-                                min="0"
-                                inputMode="numeric"
-                                value={form.current_price_kyat}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        current_price_kyat: event.target.value,
-                                    })
-                                }
-                                required
-                            />
-                        </label>
-                        <label>
-                            {t("category")}
-                            <select
-                                value={form.curry_category_id}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        curry_category_id: event.target.value,
-                                    })
-                                }
-                            >
-                                <option value="">{t("none")}</option>
+                                    required
+                                />
+                            </label>
+                            <label>
+                                {t("display_order")}
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={categoryForm.display_order}
+                                    onChange={(event) =>
+                                        setCategoryForm({
+                                            ...categoryForm,
+                                            display_order: event.target.value,
+                                        })
+                                    }
+                                />
+                            </label>
+                            <label className="check-row">
+                                <input
+                                    type="checkbox"
+                                    checked={categoryForm.is_active}
+                                    onChange={(event) =>
+                                        setCategoryForm({
+                                            ...categoryForm,
+                                            is_active: event.target.checked,
+                                        })
+                                    }
+                                />
+                                {t("active")}
+                            </label>
+                            <button className="secondary">{t("save")}</button>
+                            <div className="list">
                                 {categories.map((category) => (
-                                    <option
-                                        value={category.id}
-                                        key={category.id}
-                                    >
-                                        {category.name}
-                                    </option>
+                                    <div className="list-row" key={category.id}>
+                                        <div>
+                                            <strong>{category.name}</strong>
+                                            <small>
+                                                {category.is_active
+                                                    ? t("active")
+                                                    : t("inactive")}{" "}
+                                                · #{category.display_order}
+                                            </small>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="text-button"
+                                            onClick={() => {
+                                                setCategoryForm({
+                                                    id: category.id,
+                                                    name: category.name,
+                                                    display_order:
+                                                        category.display_order ||
+                                                        0,
+                                                    is_active:
+                                                        category.is_active,
+                                                });
+                                                setShowCategoryForm(true);
+                                            }}
+                                        >
+                                            {t("edit")}
+                                        </button>
+                                    </div>
                                 ))}
-                            </select>
-                        </label>
-                    </div>
-                    <div className="two-column">
-                        <label>
-                            {t("display_order")}
-                            <input
-                                type="number"
-                                min="0"
-                                value={form.display_order}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        display_order: event.target.value,
-                                    })
-                                }
-                            />
-                        </label>
-                        <label className="check-row">
-                            <input
-                                type="checkbox"
-                                checked={form.is_available}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        is_available: event.target.checked,
-                                    })
-                                }
-                            />
-                            {t("available")}
-                        </label>
-                    </div>
-                    <button className="primary">{t("save")}</button>
-                </form>
+                            </div>
+                        </form>
+                    </Modal>
+                )}
+                {showItemForm && (
+                    <Modal
+                        title={form.id ? t("edit_curry") : t("new_curry")}
+                        onClose={() => setShowItemForm(false)}
+                    >
+                        <form className="inset-form stack" onSubmit={saveItem}>
+                            <label>
+                                {t("name")}
+                                <input
+                                    value={form.name}
+                                    onChange={(event) =>
+                                        setForm({
+                                            ...form,
+                                            name: event.target.value,
+                                        })
+                                    }
+                                    required
+                                />
+                            </label>
+                            <div className="two-column">
+                                <label>
+                                    {t("price")}
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        inputMode="numeric"
+                                        value={form.current_price_kyat}
+                                        onChange={(event) =>
+                                            setForm({
+                                                ...form,
+                                                current_price_kyat:
+                                                    event.target.value,
+                                            })
+                                        }
+                                        required
+                                    />
+                                </label>
+                                <label>
+                                    {t("category")}
+                                    <select
+                                        value={form.curry_category_id}
+                                        onChange={(event) =>
+                                            setForm({
+                                                ...form,
+                                                curry_category_id:
+                                                    event.target.value,
+                                            })
+                                        }
+                                    >
+                                        <option value="">{t("none")}</option>
+                                        {categories.map((category) => (
+                                            <option
+                                                value={category.id}
+                                                key={category.id}
+                                            >
+                                                {category.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+                            <div className="two-column">
+                                <label>
+                                    {t("display_order")}
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={form.display_order}
+                                        onChange={(event) =>
+                                            setForm({
+                                                ...form,
+                                                display_order:
+                                                    event.target.value,
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <label className="check-row">
+                                    <input
+                                        type="checkbox"
+                                        checked={form.is_available}
+                                        onChange={(event) =>
+                                            setForm({
+                                                ...form,
+                                                is_available:
+                                                    event.target.checked,
+                                            })
+                                        }
+                                    />
+                                    {t("available")}
+                                </label>
+                            </div>
+                            <button className="primary">{t("save")}</button>
+                        </form>
+                    </Modal>
+                )}
             </div>
             <div className="list">
                 {items.map((item) => (
@@ -3042,139 +3256,135 @@ function StaffManager({ t }) {
             <Notice kind="error">{error}</Notice>
             <Notice kind="success">{success}</Notice>
             {form && (
-                <form className="inset-form stack" onSubmit={saveStaff}>
-                    <div className="section-heading">
-                        <h3>{form.id ? t("edit_staff") : t("new_staff")}</h3>
-                        <button
-                            type="button"
-                            className="text-button"
-                            onClick={() => setForm(null)}
-                        >
-                            {t("cancel")}
-                        </button>
-                    </div>
-                    <div className="two-column">
-                        <label>
-                            {t("name")}
-                            <input
-                                value={form.name}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        name: event.target.value,
-                                    })
-                                }
-                                required
-                            />
-                        </label>
-                        <label>
-                            {t("email")}
-                            <input
-                                type="email"
-                                value={form.email}
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        email: event.target.value,
-                                    })
-                                }
-                                required
-                            />
-                        </label>
-                    </div>
-                    <div className="two-column">
-                        <label>
-                            {form.id
-                                ? t("new_password_optional")
-                                : t("password")}
-                            <input
-                                type="password"
-                                value={form.password}
-                                minLength="8"
-                                onChange={(event) =>
-                                    setForm({
-                                        ...form,
-                                        password: event.target.value,
-                                    })
-                                }
-                                required={!form.id}
-                            />
-                        </label>
-                        {form.id && (
+                <Modal
+                    title={form.id ? t("edit_staff") : t("new_staff")}
+                    onClose={() => setForm(null)}
+                    wide
+                >
+                    <form className="inset-form stack" onSubmit={saveStaff}>
+                        <div className="two-column">
                             <label>
-                                {t("confirm_password")}
+                                {t("name")}
                                 <input
-                                    type="password"
-                                    value={form.password_confirmation}
+                                    value={form.name}
                                     onChange={(event) =>
                                         setForm({
                                             ...form,
-                                            password_confirmation:
-                                                event.target.value,
+                                            name: event.target.value,
                                         })
                                     }
-                                    required={!!form.password}
+                                    required
                                 />
                             </label>
-                        )}
-                    </div>
-                    <fieldset>
-                        <legend>{t("role_templates")}</legend>
-                        <div className="template-grid">
-                            {roles.map((role) => (
-                                <button
-                                    type="button"
-                                    className="secondary"
-                                    key={role.id}
-                                    onClick={() =>
-                                        setForm((current) => ({
-                                            ...current,
-                                            role_ids: [],
-                                            permission_ids:
-                                                role.permissions?.map(
-                                                    (permission) =>
-                                                        permission.id,
-                                                ) || [],
-                                        }))
+                            <label>
+                                {t("email")}
+                                <input
+                                    type="email"
+                                    value={form.email}
+                                    onChange={(event) =>
+                                        setForm({
+                                            ...form,
+                                            email: event.target.value,
+                                        })
                                     }
-                                >
-                                    {localizedRecordLabel(t, "role", role)}
-                                </button>
-                            ))}
+                                    required
+                                />
+                            </label>
                         </div>
-                        <small>{t("template_help")}</small>
-                    </fieldset>
-                    <fieldset>
-                        <legend>{t("permissions")}</legend>
-                        <div className="choice-grid">
-                            {permissions.map((permission) => (
-                                <label
-                                    className="check-row"
-                                    key={permission.id}
-                                >
+                        <div className="two-column">
+                            <label>
+                                {form.id
+                                    ? t("new_password_optional")
+                                    : t("password")}
+                                <input
+                                    type="password"
+                                    value={form.password}
+                                    minLength="8"
+                                    onChange={(event) =>
+                                        setForm({
+                                            ...form,
+                                            password: event.target.value,
+                                        })
+                                    }
+                                    required={!form.id}
+                                />
+                            </label>
+                            {form.id && (
+                                <label>
+                                    {t("confirm_password")}
                                     <input
-                                        type="checkbox"
-                                        checked={form.permission_ids.includes(
-                                            permission.id,
-                                        )}
-                                        onChange={() =>
-                                            toggleArray(
-                                                "permission_ids",
-                                                permission.id,
-                                            )
+                                        type="password"
+                                        value={form.password_confirmation}
+                                        onChange={(event) =>
+                                            setForm({
+                                                ...form,
+                                                password_confirmation:
+                                                    event.target.value,
+                                            })
                                         }
+                                        required={!!form.password}
                                     />
-                                    {localizedRecordLabel(
-                                        t,
-                                        "permission",
-                                        permission,
-                                    )}
                                 </label>
-                            ))}
+                            )}
                         </div>
-                    </fieldset>
-                    <button className="primary">{t("save")}</button>
-                </form>
+                        <fieldset>
+                            <legend>{t("role_templates")}</legend>
+                            <div className="template-grid">
+                                {roles.map((role) => (
+                                    <button
+                                        type="button"
+                                        className="secondary"
+                                        key={role.id}
+                                        onClick={() =>
+                                            setForm((current) => ({
+                                                ...current,
+                                                role_ids: [],
+                                                permission_ids:
+                                                    role.permissions?.map(
+                                                        (permission) =>
+                                                            permission.id,
+                                                    ) || [],
+                                            }))
+                                        }
+                                    >
+                                        {localizedRecordLabel(t, "role", role)}
+                                    </button>
+                                ))}
+                            </div>
+                            <small>{t("template_help")}</small>
+                        </fieldset>
+                        <fieldset>
+                            <legend>{t("permissions")}</legend>
+                            <div className="choice-grid">
+                                {permissions.map((permission) => (
+                                    <label
+                                        className="check-row"
+                                        key={permission.id}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={form.permission_ids.includes(
+                                                permission.id,
+                                            )}
+                                            onChange={() =>
+                                                toggleArray(
+                                                    "permission_ids",
+                                                    permission.id,
+                                                )
+                                            }
+                                        />
+                                        {localizedRecordLabel(
+                                            t,
+                                            "permission",
+                                            permission,
+                                        )}
+                                    </label>
+                                ))}
+                            </div>
+                        </fieldset>
+                        <button className="primary">{t("save")}</button>
+                    </form>
+                </Modal>
             )}
             <div className="list">
                 {staff.map((user) => (
@@ -3523,7 +3733,7 @@ export default function App() {
                         )
                     }
                 >
-                    <span className="brand-mark small">LH</span>
+                    <BrandIcon small />
                     <span>
                         <strong>{t("app_name")}</strong>
                         <small>{t("restaurant_ledger")}</small>

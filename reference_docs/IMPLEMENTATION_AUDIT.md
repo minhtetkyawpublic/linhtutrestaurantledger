@@ -31,6 +31,9 @@ Status: implemented and automated locally.
 - Install manifest, valid 192/512 icons, service worker with API bypass,
   static offline fallback, online/offline state, save blocking while offline,
   update-ready prompt, and History API routes that survive direct refreshes.
+- App/favicon/Apple/maskable icons are generated from `linhtuticon.jpg`;
+  compact phone views use centered fade-in modals rather than bottom sheets,
+  with secondary report content collapsed by default.
 - Authentication refreshes the SPA CSRF token after Laravel regenerates the
   session, so protected buttons continue working immediately after login.
 - Blade includes the React refresh preamble before Vite scripts; both live Vite
@@ -107,10 +110,12 @@ Automated:
 - `npm run translations:check`
 - `npm run runtime:paths:test`
 - `npm run hostinger:verify`
-- `npm run test:ui` (18 tests covering login/localization, authenticated home,
+- `npm run test:ui` (19 tests covering login/localization, authenticated home,
   permission routes, settings, duplicate-submit locks, ledger corrections and
   backdating, balance refresh, saved-sale detail, and connection recovery)
 - `npm run test:browser:dev` with live Vite: React refresh preamble and CSS
+- `npm run test:layout:dev` with a 390 x 844 Chrome viewport: compact report
+  layout, no horizontal overflow, branded icon, and centered non-sheet modal
 - `npm run test:browser` in installed Chrome at 390 x 844: production CSS,
   login, direct `/reports` refresh, English/Myanmar layouts, logout/re-login,
   console errors, horizontal overflow, and service-worker offline fallback
