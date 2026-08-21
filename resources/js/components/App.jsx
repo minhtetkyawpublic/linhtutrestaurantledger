@@ -2466,8 +2466,6 @@ function ReportsScreen({ t }) {
         ["new_sale_debt", "total_new_sale_debt", "money"],
         ["payments_received", "customer_payments_received", "money"],
         ["money_lent", "money_lent_or_returned", "money"],
-        ["reversed_sales", "reversed_sales_count", "count"],
-        ["reversed_adjustments", "reversed_ledger_entries_count", "count"],
     ];
     const change = (field, value) =>
         setFilters((current) => ({

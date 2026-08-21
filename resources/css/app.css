@@ -137,6 +137,9 @@ html[lang="my"] small {
     color: inherit;
     text-align: left;
 }
+.history-row + .history-row {
+    margin-top: 0.55rem;
+}
 .history-row > span:first-child,
 .row-end {
     display: flex;
