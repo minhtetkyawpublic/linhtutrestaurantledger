@@ -6,8 +6,6 @@ use App\Models\Customer;
 use App\Models\CustomerLedgerEntry;
 use App\Services\AuditService;
 use App\Services\LedgerService;
-use App\Services\PdfLabels;
-use App\Services\SimplePdfGenerator;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -18,53 +16,17 @@ class CustomerController extends Controller
 {
     public function ledger(Customer $customer, Request $request)
     {
+        $perPage = min(50, max(5, $request->integer('per_page', 20)));
+
         return $this->buildLedgerQuery($customer, $request)
             ->orderBy('occurred_at', 'desc')
             ->orderByDesc('id')
-            ->get()
-            ->values();
+            ->paginate($perPage);
     }
 
-    public function statement(Customer $customer, Request $request)
+    public function show(Customer $customer)
     {
-        $range = $this->parseDateRange($request);
-        $entries = $this->buildLedgerQuery($customer, $request)
-            ->orderBy('occurred_at')
-            ->orderBy('id')
-            ->get()
-            ->values();
-
-        $labels = new PdfLabels($request->user()?->ui_locale);
-        $lines = [
-            sprintf('%s: %s', $labels->get('customer'), $customer->name),
-            sprintf(
-                '%s: %s',
-                $labels->get('period'),
-                $range['is_custom']
-                    ? $range['from']->toDateString().' - '.$range['to']->toDateString()
-                    : $labels->get('all_history')
-            ),
-            $labels->get('statement_columns'),
-        ];
-
-        foreach ($entries as $entry) {
-            $lines[] = sprintf(
-                '%s | %s | %d | %d | %s | %s',
-                optional($entry->occurred_at)->toDateTimeString(),
-                $labels->event($entry->event_type),
-                $entry->amount_kyat,
-                $entry->balance_after_kyat,
-                $entry->actor?->name ?? '-',
-                $entry->reason ?? ($entry->meta['note'] ?? '-')
-            );
-        }
-
-        $pdf = SimplePdfGenerator::build($labels->get('statement_title'), $lines);
-
-        return response($pdf, 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => sprintf('inline; filename="statement-customer-%d.pdf"', $customer->id),
-        ]);
+        return response()->json($customer);
     }
 
     public function index(Request $request)

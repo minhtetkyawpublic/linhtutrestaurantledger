@@ -2,10 +2,10 @@
 
 use App\Http\Controllers\AdminPermissionController;
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\CurryCategoryController;
 use App\Http\Controllers\CurryItemController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\HistoryController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SaleController;
 use Illuminate\Http\Request;
@@ -66,13 +66,9 @@ Route::middleware('web')->group(function () {
 
         // Every authenticated staff member may read the current menu so that
         // create-sale users do not also need menu-management permission.
-        Route::get('/curry-categories', [CurryCategoryController::class, 'index']);
         Route::get('/curry-items', [CurryItemController::class, 'index']);
 
         Route::middleware('permission:manage_curry_items')->group(function () {
-            Route::post('/curry-categories', [CurryCategoryController::class, 'store']);
-            Route::put('/curry-categories/{curry_category}', [CurryCategoryController::class, 'update']);
-
             Route::post('/curry-items', [CurryItemController::class, 'store']);
             Route::put('/curry-items/{curry_item}', [CurryItemController::class, 'update']);
             Route::post('/curry-items/{curry_item}/archive', [CurryItemController::class, 'archive']);
@@ -80,9 +76,8 @@ Route::middleware('web')->group(function () {
 
         Route::middleware('permission:view_customers')->group(function () {
             Route::get('/customers', [CustomerController::class, 'index']);
+            Route::get('/customers/{customer}', [CustomerController::class, 'show']);
             Route::get('/customers/{customer}/ledger', [CustomerController::class, 'ledger'])
-                ->middleware('permission:view_customer_statements');
-            Route::get('/customers/{customer}/statement', [CustomerController::class, 'statement'])
                 ->middleware('permission:view_customer_statements');
         });
 
@@ -106,6 +101,9 @@ Route::middleware('web')->group(function () {
 
         Route::middleware('permission:view_sales_history')->group(function () {
             Route::get('/sales', [SaleController::class, 'index']);
+            Route::get('/histories', [HistoryController::class, 'index']);
+            Route::get('/histories/filter-options', [HistoryController::class, 'filterOptions']);
+            Route::get('/histories/sales/{sale}', [HistoryController::class, 'sale']);
         });
 
         Route::middleware('permission:create_sale')->group(function () {
@@ -121,8 +119,6 @@ Route::middleware('web')->group(function () {
         Route::middleware('permission:delete_reverse_sale')->group(function () {
             Route::post('/sales/{sale}/reverse', [SaleController::class, 'reverse']);
         });
-
-        Route::get('/sales/{sale}/receipt', [SaleController::class, 'receipt']);
 
         Route::middleware('permission:view_reports')->group(function () {
             Route::get('/reports/filter-options', [ReportController::class, 'filterOptions']);

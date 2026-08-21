@@ -96,12 +96,13 @@ input,
 select,
 textarea {
     width: 100%;
-    min-height: 46px;
+    min-height: 52px;
     border: 1px solid #d8cec4;
     border-radius: 12px;
     background: #fff;
     color: var(--ink);
-    padding: 0.75rem 0.85rem;
+    padding: 0.68rem 0.85rem 0.55rem;
+    line-height: 1.75;
     outline: none;
     transition:
         border 0.15s,
@@ -109,7 +110,58 @@ textarea {
 }
 textarea {
     min-height: 82px;
+    padding-top: 0.8rem;
+    line-height: 1.8;
     resize: vertical;
+}
+
+html[lang="my"] button,
+html[lang="my"] input,
+html[lang="my"] select,
+html[lang="my"] textarea,
+html[lang="my"] label,
+html[lang="my"] small {
+    line-height: 1.85;
+}
+
+.history-row {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #fff;
+    color: inherit;
+    text-align: left;
+}
+.history-row > span:first-child,
+.row-end {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+}
+.history-row > span:first-child {
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+}
+.row-arrow {
+    color: var(--orange-dark);
+    font-size: 1.7rem;
+    line-height: 1;
+}
+.pagination-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+.back-link {
+    justify-self: start;
 }
 input:focus,
 select:focus,
@@ -884,6 +936,10 @@ textarea:focus {
     grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.45fr);
     gap: 1rem;
     align-items: start;
+}
+.customer-layout.customer-list-page,
+.customer-layout.customer-detail-page {
+    grid-template-columns: minmax(0, 1fr);
 }
 .customer-sidebar {
     position: sticky;

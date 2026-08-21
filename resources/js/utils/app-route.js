@@ -1,5 +1,5 @@
 const morePanelPaths = {
-    sales: "sales",
+    histories: "histories",
     curries: "curries",
     staff: "staff",
     audit_history: "audit-history",
@@ -36,6 +36,12 @@ export function parseAppRoute(pathname, basePath = "") {
         return { view: "customers", subview: customerId };
     }
     if (segments[0] === "reports") return { view: "reports", subview: null };
+    if (
+        segments[0] === "history" &&
+        segments[1] === "sale" &&
+        /^\d+$/.test(segments[2] || "")
+    )
+        return { view: "sale_detail", subview: Number(segments[2]) };
     if (segments[0] === "more") {
         const panel = Object.entries(morePanelPaths).find(
             ([, path]) => path === segments[1],
@@ -52,6 +58,7 @@ export function appRoutePath(view, subview = null, basePath = "") {
     if (view === "customers")
         route = subview ? `/customers/${Number(subview)}` : "/customers";
     if (view === "reports") route = "/reports";
+    if (view === "sale_detail") route = `/history/sale/${Number(subview)}`;
     if (view === "more")
         route =
             subview && morePanelPaths[subview]

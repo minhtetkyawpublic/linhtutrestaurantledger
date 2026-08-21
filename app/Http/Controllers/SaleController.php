@@ -9,8 +9,6 @@ use App\Models\SaleItem;
 use App\Models\User;
 use App\Services\AuditService;
 use App\Services\LedgerService;
-use App\Services\PdfLabels;
-use App\Services\SimplePdfGenerator;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +24,6 @@ class SaleController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name', 'phone_number']),
             'curries' => CurryItem::query()
-                ->with('category:id,name')
                 ->where('is_available', true)
                 ->where('is_archived', false)
                 ->orderBy('display_order')
@@ -42,7 +39,6 @@ class SaleController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name', 'phone_number', 'is_active', 'is_archived']),
             'curries' => CurryItem::query()
-                ->with('category:id,name')
                 ->orderBy('display_order')
                 ->orderBy('name')
                 ->get(),
@@ -399,64 +395,6 @@ class SaleController extends Controller
         });
 
         return response()->json($sale->fresh());
-    }
-
-    public function receipt(Request $request, int $saleId)
-    {
-        $sale = Sale::query()
-            ->with('items', 'customer')
-            ->findOrFail($saleId);
-
-        $canViewHistory = $request->user()?->hasPermission('view_sales_history');
-        $isOwnCreatedSale = $request->user()?->hasPermission('create_sale')
-            && $sale->user_id === $request->user()?->id;
-
-        abort_unless($canViewHistory || $isOwnCreatedSale, 403);
-
-        if ($sale->is_reversed) {
-            throw ValidationException::withMessages([
-                'sale' => ['Receipt unavailable for reversed sale.'],
-            ]);
-        }
-
-        $labels = new PdfLabels($request->user()?->ui_locale);
-
-        $lines = [
-            $labels->get('restaurant').': '.config('app.name'),
-            sprintf('%s: %s', $labels->get('receipt_number'), $sale->invoice_number),
-            sprintf('%s: %s', $labels->get('date'), optional($sale->sale_at)->toDateTimeString()),
-            sprintf('%s: %s', $labels->get('customer'), $sale->customer?->name ?? $labels->get('walk_in_customer')),
-            '-----',
-            sprintf('%s: %d', $labels->get('items'), $sale->items->count()),
-        ];
-
-        foreach ($sale->items as $item) {
-            $lines[] = sprintf(
-                '%s x %d @ %d = %d',
-                $item->curry_name_snapshot,
-                $item->quantity,
-                $item->unit_price_snapshot_kyat,
-                $item->line_total_kyat
-            );
-        }
-
-        $lines[] = '-----';
-        $lines[] = sprintf('%s: %d', $labels->get('subtotal'), $sale->subtotal_kyat);
-        $lines[] = sprintf('%s: %d', $labels->get('discount'), $sale->discount_kyat);
-        $lines[] = sprintf('%s: %d', $labels->get('total'), $sale->total_kyat);
-        $lines[] = sprintf('%s: %d', $labels->get('paid'), $sale->paid_kyat);
-        $lines[] = sprintf('%s: %d', $labels->get('unpaid'), max(0, (int) $sale->unpaid_kyat));
-        if ((int) $sale->unpaid_kyat < 0) {
-            $lines[] = sprintf('%s: %d', $labels->get('customer_credit'), abs((int) $sale->unpaid_kyat));
-        }
-        $lines[] = sprintf('%s: %s', $labels->get('note'), $sale->note ?? '-');
-
-        $pdf = SimplePdfGenerator::build($labels->get('receipt_title'), $lines);
-
-        return response($pdf, 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => sprintf('inline; filename="receipt-%s.pdf"', $sale->invoice_number),
-        ]);
     }
 
     private function prepareSaleItems(array $items): array

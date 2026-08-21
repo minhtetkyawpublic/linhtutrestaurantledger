@@ -40,6 +40,7 @@ const viewPermissions = {
     new_sale: "create_sale",
     customers: "view_customers",
     reports: "view_reports",
+    sale_detail: "view_sales_history",
 };
 
 function useLanguage() {
@@ -450,11 +451,13 @@ function NewSaleScreen({
     clearPreset,
     online,
 }) {
+    // Receipt generation is intentionally unavailable; completed sales are
+    // reviewed from the dedicated history detail screen.
+    const receipt = () => {};
     const [customers, setCustomers] = useState([]);
     const [curries, setCurries] = useState([]);
     const [customerQuery, setCustomerQuery] = useState("");
     const [curryQuery, setCurryQuery] = useState("");
-    const [curryCategory, setCurryCategory] = useState("");
     const [items, setItems] = useState([]);
     const [form, setForm] = useState({
         customer_id: presetCustomerId || "",
@@ -469,7 +472,6 @@ function NewSaleScreen({
         saving: false,
         error: "",
         success: "",
-        sale: null,
     });
     const savingRef = useRef(false);
     const submissionRef = useRef(null);
@@ -518,26 +520,12 @@ function NewSaleScreen({
                 .includes(query),
         );
     }, [customerQuery, customers]);
-    const curryCategories = useMemo(
-        () =>
-            Array.from(
-                new Map(
-                    curries
-                        .filter((curry) => curry.category)
-                        .map((curry) => [curry.category.id, curry.category]),
-                ).values(),
-            ),
-        [curries],
-    );
     const filteredCurries = useMemo(() => {
         const query = curryQuery.trim().toLocaleLowerCase();
         return curries.filter(
-            (curry) =>
-                (!curryCategory ||
-                    curry.category?.id === Number(curryCategory)) &&
-                (!query || curry.name.toLocaleLowerCase().includes(query)),
+            (curry) => !query || curry.name.toLocaleLowerCase().includes(query),
         );
-    }, [curries, curryCategory, curryQuery]);
+    }, [curries, curryQuery]);
     const resultingBalance =
         Number(selectedCustomer?.current_balance_kyat || 0) + unpaid;
     const resultingBalanceKey =
@@ -603,10 +591,9 @@ function NewSaleScreen({
             saving: true,
             error: "",
             success: "",
-            sale: null,
         }));
         try {
-            const response = await apiClient.post("/sales", {
+            await apiClient.post("/sales", {
                 ...payload,
                 idempotency_key: submissionRef.current.key,
             });
@@ -615,7 +602,6 @@ function NewSaleScreen({
                 ...state,
                 saving: false,
                 success: t("sale_saved"),
-                sale: response.data,
             }));
             setItems([]);
             setForm((current) => ({
@@ -633,22 +619,6 @@ function NewSaleScreen({
             }));
         } finally {
             savingRef.current = false;
-        }
-    };
-    const receipt = async (action) => {
-        try {
-            const response = await apiClient.get(
-                `/sales/${status.sale.id}/receipt`,
-                { responseType: "blob" },
-            );
-            const filename = `receipt-${status.sale.invoice_number}.pdf`;
-            if (action === "save") download(response.data, filename);
-            else await shareOrDownload(response.data, filename, t("receipt"));
-        } catch (error) {
-            setStatus((state) => ({
-                ...state,
-                error: errorMessage(error, t("download_failed")),
-            }));
         }
     };
     if (status.loading) return <Loading t={t} />;
@@ -732,7 +702,7 @@ function NewSaleScreen({
                 </div>
                 {curries.length ? (
                     <>
-                        <div className="filter-grid compact-filter-grid">
+                        <div className="compact-filter-grid">
                             <label>
                                 {t("search_curries")}
                                 <input
@@ -742,27 +712,6 @@ function NewSaleScreen({
                                         setCurryQuery(event.target.value)
                                     }
                                 />
-                            </label>
-                            <label>
-                                {t("category")}
-                                <select
-                                    value={curryCategory}
-                                    onChange={(event) =>
-                                        setCurryCategory(event.target.value)
-                                    }
-                                >
-                                    <option value="">
-                                        {t("all_categories")}
-                                    </option>
-                                    {curryCategories.map((category) => (
-                                        <option
-                                            key={category.id}
-                                            value={category.id}
-                                        >
-                                            {category.name}
-                                        </option>
-                                    ))}
-                                </select>
                             </label>
                         </div>
                         <div className="curry-grid">
@@ -1046,6 +995,8 @@ function CustomersScreen({
     t,
     permissions,
     initialCustomerId,
+    onOpenCustomer,
+    onBack,
     onNewSale,
     online,
 }) {
@@ -1053,6 +1004,11 @@ function CustomersScreen({
     const [query, setQuery] = useState("");
     const [selected, setSelected] = useState(null);
     const [ledger, setLedger] = useState([]);
+    const [ledgerPage, setLedgerPage] = useState({
+        current_page: 1,
+        last_page: 1,
+        total: 0,
+    });
     const [ledgerRange, setLedgerRange] = useState({ from: "", to: "" });
     const [appliedLedgerRange, setAppliedLedgerRange] = useState({
         from: "",
@@ -1110,7 +1066,7 @@ function CustomersScreen({
         [initialCustomerId, t],
     );
     const loadLedger = useCallback(
-        async (customer) => {
+        async (customer, page = 1) => {
             if (
                 !customer ||
                 !hasPermission(permissions, "view_customer_statements")
@@ -1118,17 +1074,19 @@ function CustomersScreen({
                 return;
             const params =
                 appliedLedgerRange.from && appliedLedgerRange.to
-                    ? appliedLedgerRange
-                    : {};
+                    ? { ...appliedLedgerRange, page, per_page: 15 }
+                    : { page, per_page: 15 };
             try {
-                setLedger(
-                    (
-                        await apiClient.get(
-                            `/customers/${customer.id}/ledger`,
-                            { params },
-                        )
-                    ).data,
+                const response = await apiClient.get(
+                    `/customers/${customer.id}/ledger`,
+                    { params },
                 );
+                setLedger(response.data.data || []);
+                setLedgerPage({
+                    current_page: response.data.current_page || 1,
+                    last_page: response.data.last_page || 1,
+                    total: response.data.total || 0,
+                });
             } catch (error) {
                 setMessage({
                     error: errorMessage(error, t("load_failed")),
@@ -1341,6 +1299,7 @@ function CustomersScreen({
         setAppliedLedgerRange({ ...ledgerRange });
         setShowLedgerFilters(false);
     };
+    // eslint-disable-next-line no-unused-vars
     const statement = async (action) => {
         try {
             const params =
@@ -1367,684 +1326,1082 @@ function CustomersScreen({
         }
     };
     return (
-        <div className="screen customer-layout">
-            <section className="panel customer-sidebar stack">
-                <div className="section-heading">
-                    <h2>{t("customers")}</h2>
-                    {hasPermission(permissions, "create_edit_customers") && (
-                        <button
-                            className="primary compact"
-                            onClick={() => {
-                                setCustomerForm({ ...emptyCustomerForm });
-                                setShowCreate(!showCreate);
-                            }}
-                        >
-                            ＋ {t("new_customer")}
-                        </button>
-                    )}
-                </div>
-                <form
-                    className="search"
-                    onSubmit={(event) => {
-                        event.preventDefault();
-                        loadCustomers(query);
-                    }}
-                >
-                    <input
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        placeholder={t("search_name_phone")}
-                    />
-                    <button>{t("search")}</button>
-                </form>
-                {showCreate && (
-                    <Modal
-                        title={
-                            customerForm.id
-                                ? t("edit_customer")
-                                : t("new_customer")
-                        }
-                        onClose={() => setShowCreate(false)}
+        <div
+            className={`screen customer-layout ${initialCustomerId ? "customer-detail-page" : "customer-list-page"}`}
+        >
+            {!initialCustomerId && (
+                <section className="panel customer-sidebar stack">
+                    <div className="section-heading">
+                        <h2>{t("customers")}</h2>
+                        {hasPermission(
+                            permissions,
+                            "create_edit_customers",
+                        ) && (
+                            <button
+                                className="primary compact"
+                                onClick={() => {
+                                    setCustomerForm({ ...emptyCustomerForm });
+                                    setShowCreate(!showCreate);
+                                }}
+                            >
+                                ＋ {t("new_customer")}
+                            </button>
+                        )}
+                    </div>
+                    <form
+                        className="search"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            loadCustomers(query);
+                        }}
                     >
-                        <form
-                            className="inset-form stack"
-                            onSubmit={saveCustomer}
-                        >
-                            <label>
-                                {t("name")}
-                                <input
-                                    value={customerForm.name}
-                                    onChange={(event) =>
-                                        setCustomerForm({
-                                            ...customerForm,
-                                            name: event.target.value,
-                                        })
-                                    }
-                                    required
-                                />
-                            </label>
-                            <label>
-                                {t("phone")}
-                                <input
-                                    inputMode="tel"
-                                    value={customerForm.phone_number}
-                                    onChange={(event) =>
-                                        setCustomerForm({
-                                            ...customerForm,
-                                            phone_number: event.target.value,
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label>
-                                {t("address_note")}
-                                <textarea
-                                    value={customerForm.address_or_note}
-                                    onChange={(event) =>
-                                        setCustomerForm({
-                                            ...customerForm,
-                                            address_or_note: event.target.value,
-                                        })
-                                    }
-                                />
-                            </label>
-                            <div className="two-column">
-                                <label>
-                                    {t("opening_balance")}
-                                    <input
-                                        type="number"
-                                        inputMode="numeric"
-                                        value={
-                                            customerForm.opening_balance_kyat
-                                        }
-                                        onChange={(event) =>
-                                            setCustomerForm({
-                                                ...customerForm,
-                                                opening_balance_kyat:
-                                                    event.target.value,
-                                            })
-                                        }
-                                    />
-                                </label>
-                                <label>
-                                    {t("reason")}
-                                    <input
-                                        value={
-                                            customerForm.opening_balance_reason
-                                        }
-                                        onChange={(event) =>
-                                            setCustomerForm({
-                                                ...customerForm,
-                                                opening_balance_reason:
-                                                    event.target.value,
-                                            })
-                                        }
-                                    />
-                                </label>
-                            </div>
-                            <button className="primary">{t("save")}</button>
-                        </form>
-                    </Modal>
-                )}
-                <div className="customer-list">
-                    {customers.map((customer) => (
-                        <button
-                            className={
-                                selected?.id === customer.id
-                                    ? "customer-row selected"
-                                    : "customer-row"
+                        <input
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder={t("search_name_phone")}
+                        />
+                        <button>{t("search")}</button>
+                    </form>
+                    {showCreate && (
+                        <Modal
+                            title={
+                                customerForm.id
+                                    ? t("edit_customer")
+                                    : t("new_customer")
                             }
-                            key={customer.id}
-                            onClick={() => setSelected(customer)}
+                            onClose={() => setShowCreate(false)}
                         >
-                            <span>
-                                <strong>{customer.name}</strong>
-                                <small>
-                                    {customer.phone_number || t("no_phone")}
-                                </small>
-                            </span>
+                            <form
+                                className="inset-form stack"
+                                onSubmit={saveCustomer}
+                            >
+                                <label>
+                                    {t("name")}
+                                    <input
+                                        value={customerForm.name}
+                                        onChange={(event) =>
+                                            setCustomerForm({
+                                                ...customerForm,
+                                                name: event.target.value,
+                                            })
+                                        }
+                                        required
+                                    />
+                                </label>
+                                <label>
+                                    {t("phone")}
+                                    <input
+                                        inputMode="tel"
+                                        value={customerForm.phone_number}
+                                        onChange={(event) =>
+                                            setCustomerForm({
+                                                ...customerForm,
+                                                phone_number:
+                                                    event.target.value,
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <label>
+                                    {t("address_note")}
+                                    <textarea
+                                        value={customerForm.address_or_note}
+                                        onChange={(event) =>
+                                            setCustomerForm({
+                                                ...customerForm,
+                                                address_or_note:
+                                                    event.target.value,
+                                            })
+                                        }
+                                    />
+                                </label>
+                                <div className="two-column">
+                                    <label>
+                                        {t("opening_balance")}
+                                        <input
+                                            type="number"
+                                            inputMode="numeric"
+                                            value={
+                                                customerForm.opening_balance_kyat
+                                            }
+                                            onChange={(event) =>
+                                                setCustomerForm({
+                                                    ...customerForm,
+                                                    opening_balance_kyat:
+                                                        event.target.value,
+                                                })
+                                            }
+                                        />
+                                    </label>
+                                    <label>
+                                        {t("reason")}
+                                        <input
+                                            value={
+                                                customerForm.opening_balance_reason
+                                            }
+                                            onChange={(event) =>
+                                                setCustomerForm({
+                                                    ...customerForm,
+                                                    opening_balance_reason:
+                                                        event.target.value,
+                                                })
+                                            }
+                                        />
+                                    </label>
+                                </div>
+                                <button className="primary">{t("save")}</button>
+                            </form>
+                        </Modal>
+                    )}
+                    <div className="customer-list">
+                        {customers.map((customer) => (
+                            <button
+                                className={
+                                    selected?.id === customer.id
+                                        ? "customer-row selected"
+                                        : "customer-row"
+                                }
+                                key={customer.id}
+                                onClick={() => onOpenCustomer(customer.id)}
+                            >
+                                <span>
+                                    <strong>{customer.name}</strong>
+                                    <small>
+                                        {customer.phone_number || t("no_phone")}
+                                    </small>
+                                </span>
+                                <span className="row-end">
+                                    <Balance
+                                        value={customer.current_balance_kyat}
+                                        t={t}
+                                    />
+                                    <span
+                                        className="row-arrow"
+                                        aria-hidden="true"
+                                    >
+                                        ›
+                                    </span>
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                </section>
+            )}
+            {initialCustomerId && (
+                <section className="panel stack customer-detail">
+                    <button className="text-button back-link" onClick={onBack}>
+                        ‹ {t("customers")}
+                    </button>
+                    <Notice kind="error">{message.error}</Notice>
+                    <Notice kind="success">{message.success}</Notice>
+                    {!selected ? (
+                        <Empty t={t} />
+                    ) : (
+                        <>
+                            <div className="section-heading">
+                                <div>
+                                    <p className="eyebrow">{t("customer")}</p>
+                                    <h2>{selected.name}</h2>
+                                    <small>
+                                        {selected.phone_number || t("no_phone")}
+                                    </small>
+                                </div>
+                                <details className="inline-disclosure">
+                                    <summary className="secondary compact">
+                                        {t("more")}
+                                    </summary>
+                                    <div className="button-row">
+                                        {hasPermission(
+                                            permissions,
+                                            "create_edit_customers",
+                                        ) && (
+                                            <button
+                                                className="secondary compact"
+                                                onClick={editCustomer}
+                                            >
+                                                {t("edit")}
+                                            </button>
+                                        )}
+                                        {hasPermission(
+                                            permissions,
+                                            "create_edit_customers",
+                                        ) && (
+                                            <button
+                                                className="danger-link"
+                                                onClick={archiveCustomer}
+                                            >
+                                                {t("archive")}
+                                            </button>
+                                        )}
+                                    </div>
+                                </details>
+                            </div>
                             <Balance
-                                value={customer.current_balance_kyat}
+                                large
+                                value={selected.current_balance_kyat}
                                 t={t}
                             />
-                        </button>
-                    ))}
-                </div>
-            </section>
-            <section className="panel stack customer-detail">
-                <Notice kind="error">{message.error}</Notice>
-                <Notice kind="success">{message.success}</Notice>
-                {!selected ? (
-                    <Empty t={t} />
-                ) : (
-                    <>
-                        <div className="section-heading">
-                            <div>
-                                <p className="eyebrow">{t("customer")}</p>
-                                <h2>{selected.name}</h2>
-                                <small>
-                                    {selected.phone_number || t("no_phone")}
-                                </small>
+                            <div className="action-grid">
+                                {hasPermission(permissions, "create_sale") && (
+                                    <button
+                                        className="primary"
+                                        onClick={() => onNewSale(selected.id)}
+                                    >
+                                        ＋ {t("new_sale")}
+                                    </button>
+                                )}
+                                {hasPermission(
+                                    permissions,
+                                    "record_customer_payment",
+                                ) && (
+                                    <button
+                                        className="secondary"
+                                        onClick={() =>
+                                            setMoneyForm({
+                                                ...moneyForm,
+                                                type: "payment",
+                                                occurred_at: hasPermission(
+                                                    permissions,
+                                                    "backdate_sale",
+                                                )
+                                                    ? nowForInput()
+                                                    : "",
+                                            })
+                                        }
+                                    >
+                                        {t("customer_pays_shop")}
+                                    </button>
+                                )}
+                                {hasPermission(
+                                    permissions,
+                                    "record_money_given_lent",
+                                ) && (
+                                    <button
+                                        className="secondary"
+                                        onClick={() =>
+                                            setMoneyForm({
+                                                ...moneyForm,
+                                                type: "lent",
+                                                occurred_at: hasPermission(
+                                                    permissions,
+                                                    "backdate_sale",
+                                                )
+                                                    ? nowForInput()
+                                                    : "",
+                                            })
+                                        }
+                                    >
+                                        {t("customer_receives_money")}
+                                    </button>
+                                )}
                             </div>
-                            <details className="inline-disclosure">
-                                <summary className="secondary compact">
-                                    {t("more")}
-                                </summary>
-                                <div className="button-row">
-                                    {hasPermission(
-                                        permissions,
-                                        "view_customer_statements",
-                                    ) && (
-                                        <button
-                                            className="secondary compact"
-                                            onClick={() => statement("share")}
-                                        >
-                                            {t("share_statement")}
-                                        </button>
-                                    )}
-                                    {hasPermission(
-                                        permissions,
-                                        "view_customer_statements",
-                                    ) && (
-                                        <button
-                                            className="secondary compact"
-                                            onClick={() => statement("save")}
-                                        >
-                                            {t("save_statement")}
-                                        </button>
-                                    )}
-                                    {hasPermission(
-                                        permissions,
-                                        "create_edit_customers",
-                                    ) && (
-                                        <button
-                                            className="secondary compact"
-                                            onClick={editCustomer}
-                                        >
-                                            {t("edit")}
-                                        </button>
-                                    )}
-                                    {hasPermission(
-                                        permissions,
-                                        "create_edit_customers",
-                                    ) && (
-                                        <button
-                                            className="danger-link"
-                                            onClick={archiveCustomer}
-                                        >
-                                            {t("archive")}
-                                        </button>
-                                    )}
-                                </div>
-                            </details>
-                        </div>
-                        <Balance
-                            large
-                            value={selected.current_balance_kyat}
-                            t={t}
-                        />
-                        <div className="action-grid">
-                            {hasPermission(permissions, "create_sale") && (
-                                <button
-                                    className="primary"
-                                    onClick={() => onNewSale(selected.id)}
-                                >
-                                    ＋ {t("new_sale")}
-                                </button>
-                            )}
-                            {hasPermission(
-                                permissions,
-                                "record_customer_payment",
-                            ) && (
-                                <button
-                                    className="secondary"
-                                    onClick={() =>
+                            {moneyForm.type && (
+                                <Modal
+                                    title={
+                                        moneyForm.type === "payment"
+                                            ? t("customer_pays_shop")
+                                            : t("customer_receives_money")
+                                    }
+                                    onClose={() =>
                                         setMoneyForm({
                                             ...moneyForm,
-                                            type: "payment",
-                                            occurred_at: hasPermission(
-                                                permissions,
-                                                "backdate_sale",
-                                            )
-                                                ? nowForInput()
-                                                : "",
+                                            type: "",
+                                            occurred_at: "",
                                         })
                                     }
                                 >
-                                    {t("customer_pays_shop")}
-                                </button>
+                                    <form
+                                        className="inset-form stack"
+                                        onSubmit={recordMoney}
+                                    >
+                                        <div className="two-column">
+                                            <label>
+                                                {t("amount")}
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    inputMode="numeric"
+                                                    value={
+                                                        moneyForm.amount_kyat
+                                                    }
+                                                    onChange={(event) =>
+                                                        setMoneyForm({
+                                                            ...moneyForm,
+                                                            amount_kyat:
+                                                                event.target
+                                                                    .value,
+                                                        })
+                                                    }
+                                                    required
+                                                />
+                                            </label>
+                                            <label>
+                                                {t("reason")}
+                                                <input
+                                                    value={moneyForm.reason}
+                                                    onChange={(event) =>
+                                                        setMoneyForm({
+                                                            ...moneyForm,
+                                                            reason: event.target
+                                                                .value,
+                                                        })
+                                                    }
+                                                    required
+                                                />
+                                            </label>
+                                        </div>
+                                        <label>
+                                            {t("note")}
+                                            <textarea
+                                                value={moneyForm.note}
+                                                onChange={(event) =>
+                                                    setMoneyForm({
+                                                        ...moneyForm,
+                                                        note: event.target
+                                                            .value,
+                                                    })
+                                                }
+                                            />
+                                        </label>
+                                        {hasPermission(
+                                            permissions,
+                                            "backdate_sale",
+                                        ) && (
+                                            <label>
+                                                {t("date_time")}
+                                                <input
+                                                    type="datetime-local"
+                                                    value={
+                                                        moneyForm.occurred_at
+                                                    }
+                                                    max={nowForInput()}
+                                                    onChange={(event) =>
+                                                        setMoneyForm({
+                                                            ...moneyForm,
+                                                            occurred_at:
+                                                                event.target
+                                                                    .value,
+                                                        })
+                                                    }
+                                                    required
+                                                />
+                                            </label>
+                                        )}
+                                        <div className="button-row">
+                                            <button
+                                                type="button"
+                                                className="ghost"
+                                                onClick={() =>
+                                                    setMoneyForm({
+                                                        ...moneyForm,
+                                                        type: "",
+                                                        occurred_at: "",
+                                                    })
+                                                }
+                                            >
+                                                {t("cancel")}
+                                            </button>
+                                            <button
+                                                className="primary"
+                                                disabled={moneySaving}
+                                            >
+                                                {moneySaving
+                                                    ? t("saving")
+                                                    : t("save")}
+                                            </button>
+                                        </div>
+                                    </form>
+                                </Modal>
+                            )}
+                            {correctionForm && (
+                                <Modal
+                                    title={t("correct_ledger_entry")}
+                                    onClose={() => setCorrectionForm(null)}
+                                >
+                                    <form
+                                        className="inset-form stack"
+                                        onSubmit={correctEntry}
+                                    >
+                                        <p className="muted">
+                                            {t(
+                                                `event_${correctionForm.event_type}`,
+                                            )}
+                                        </p>
+                                        <div className="two-column">
+                                            <label>
+                                                {t("corrected_amount")}
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    inputMode="numeric"
+                                                    value={
+                                                        correctionForm.amount_kyat
+                                                    }
+                                                    onChange={(event) =>
+                                                        setCorrectionForm({
+                                                            ...correctionForm,
+                                                            amount_kyat:
+                                                                event.target
+                                                                    .value,
+                                                        })
+                                                    }
+                                                    required
+                                                />
+                                            </label>
+                                            <label>
+                                                {t("correction_reason")}
+                                                <input
+                                                    value={
+                                                        correctionForm.reason
+                                                    }
+                                                    onChange={(event) =>
+                                                        setCorrectionForm({
+                                                            ...correctionForm,
+                                                            reason: event.target
+                                                                .value,
+                                                        })
+                                                    }
+                                                    required
+                                                />
+                                            </label>
+                                        </div>
+                                        {hasPermission(
+                                            permissions,
+                                            "backdate_sale",
+                                        ) && (
+                                            <label>
+                                                {t("date_time")}
+                                                <input
+                                                    type="datetime-local"
+                                                    value={
+                                                        correctionForm.occurred_at
+                                                    }
+                                                    max={nowForInput()}
+                                                    onChange={(event) =>
+                                                        setCorrectionForm({
+                                                            ...correctionForm,
+                                                            occurred_at:
+                                                                event.target
+                                                                    .value,
+                                                        })
+                                                    }
+                                                    required
+                                                />
+                                            </label>
+                                        )}
+                                        <label>
+                                            {t("note")}
+                                            <textarea
+                                                value={correctionForm.note}
+                                                onChange={(event) =>
+                                                    setCorrectionForm({
+                                                        ...correctionForm,
+                                                        note: event.target
+                                                            .value,
+                                                    })
+                                                }
+                                            />
+                                        </label>
+                                        <div className="button-row">
+                                            <button
+                                                type="button"
+                                                className="ghost"
+                                                onClick={() =>
+                                                    setCorrectionForm(null)
+                                                }
+                                            >
+                                                {t("cancel")}
+                                            </button>
+                                            <button
+                                                className="primary"
+                                                disabled={correctionSaving}
+                                            >
+                                                {correctionSaving
+                                                    ? t("saving")
+                                                    : t(
+                                                          "save_entry_correction",
+                                                      )}
+                                            </button>
+                                        </div>
+                                    </form>
+                                </Modal>
                             )}
                             {hasPermission(
                                 permissions,
-                                "record_money_given_lent",
+                                "view_customer_statements",
                             ) && (
-                                <button
-                                    className="secondary"
-                                    onClick={() =>
-                                        setMoneyForm({
-                                            ...moneyForm,
-                                            type: "lent",
-                                            occurred_at: hasPermission(
-                                                permissions,
-                                                "backdate_sale",
-                                            )
-                                                ? nowForInput()
-                                                : "",
-                                        })
-                                    }
-                                >
-                                    {t("customer_receives_money")}
-                                </button>
+                                <>
+                                    <button
+                                        type="button"
+                                        className="secondary compact"
+                                        onClick={() =>
+                                            setShowLedgerFilters(true)
+                                        }
+                                    >
+                                        {t("filters")}
+                                    </button>
+                                    {showLedgerFilters && (
+                                        <Modal
+                                            title={t("filters")}
+                                            onClose={() =>
+                                                setShowLedgerFilters(false)
+                                            }
+                                        >
+                                            <form
+                                                className="filter-grid ledger-filter"
+                                                onSubmit={applyLedgerFilter}
+                                            >
+                                                <label>
+                                                    {t("from")}
+                                                    <input
+                                                        type="date"
+                                                        value={ledgerRange.from}
+                                                        onChange={(event) =>
+                                                            setLedgerRange(
+                                                                (current) => ({
+                                                                    ...current,
+                                                                    from: event
+                                                                        .target
+                                                                        .value,
+                                                                }),
+                                                            )
+                                                        }
+                                                    />
+                                                </label>
+                                                <label>
+                                                    {t("to")}
+                                                    <input
+                                                        type="date"
+                                                        value={ledgerRange.to}
+                                                        onChange={(event) =>
+                                                            setLedgerRange(
+                                                                (current) => ({
+                                                                    ...current,
+                                                                    to: event
+                                                                        .target
+                                                                        .value,
+                                                                }),
+                                                            )
+                                                        }
+                                                    />
+                                                </label>
+                                                <button
+                                                    className="secondary"
+                                                    type="submit"
+                                                >
+                                                    {t("apply_filter")}
+                                                </button>
+                                                <button
+                                                    className="ghost"
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setLedgerRange({
+                                                            from: "",
+                                                            to: "",
+                                                        });
+                                                        setAppliedLedgerRange({
+                                                            from: "",
+                                                            to: "",
+                                                        });
+                                                        setShowLedgerFilters(
+                                                            false,
+                                                        );
+                                                    }}
+                                                >
+                                                    {t("clear_filter")}
+                                                </button>
+                                            </form>
+                                        </Modal>
+                                    )}
+                                </>
                             )}
-                        </div>
-                        {moneyForm.type && (
-                            <Modal
-                                title={
-                                    moneyForm.type === "payment"
-                                        ? t("customer_pays_shop")
-                                        : t("customer_receives_money")
-                                }
-                                onClose={() =>
-                                    setMoneyForm({
-                                        ...moneyForm,
-                                        type: "",
-                                        occurred_at: "",
+                            <div className="section-heading">
+                                <h3>{t("activity")}</h3>
+                                <span className="pill">{ledger.length}</span>
+                            </div>
+                            {ledger.length ? (
+                                <>
+                                    <div className="timeline">
+                                        {ledger.map((entry) => (
+                                            <article
+                                                className="timeline-entry"
+                                                key={entry.id}
+                                            >
+                                                <span
+                                                    className={`timeline-dot ${entry.amount_kyat >= 0 ? "positive" : "negative"}`}
+                                                />
+                                                <div>
+                                                    <strong>
+                                                        {t(
+                                                            `event_${entry.event_type}`,
+                                                        )}
+                                                    </strong>
+                                                    <small>
+                                                        {new Date(
+                                                            entry.occurred_at,
+                                                        ).toLocaleString()}
+                                                    </small>
+                                                    {entry.reason && (
+                                                        <small>
+                                                            {entry.reason}
+                                                        </small>
+                                                    )}
+                                                    {entry.meta?.note && (
+                                                        <small>
+                                                            {entry.meta.note}
+                                                        </small>
+                                                    )}
+                                                    {entry.actor?.name && (
+                                                        <small>
+                                                            {t("recorded_by")}:{" "}
+                                                            {entry.actor.name}
+                                                        </small>
+                                                    )}
+                                                </div>
+                                                <div className="align-right">
+                                                    <strong>
+                                                        {entry.amount_kyat >= 0
+                                                            ? "+"
+                                                            : "−"}
+                                                        {money(
+                                                            Math.abs(
+                                                                entry.amount_kyat,
+                                                            ),
+                                                        )}
+                                                    </strong>
+                                                    <small>
+                                                        {t("balance")}:{" "}
+                                                        {money(
+                                                            entry.balance_after_kyat,
+                                                        )}
+                                                    </small>
+                                                    {entry.reversed_by?.length >
+                                                        0 && (
+                                                        <small className="danger-text">
+                                                            {t(
+                                                                "reversed_status",
+                                                            )}
+                                                        </small>
+                                                    )}
+                                                    {hasPermission(
+                                                        permissions,
+                                                        "correct_reverse_ledger",
+                                                    ) &&
+                                                        [
+                                                            "customer_paid",
+                                                            "money_lent",
+                                                            "opening_balance_adjustment",
+                                                        ].includes(
+                                                            entry.event_type,
+                                                        ) &&
+                                                        !entry.reversed_by
+                                                            ?.length && (
+                                                            <div className="button-row compact-actions">
+                                                                {[
+                                                                    "customer_paid",
+                                                                    "money_lent",
+                                                                ].includes(
+                                                                    entry.event_type,
+                                                                ) && (
+                                                                    <button
+                                                                        className="secondary compact"
+                                                                        onClick={() =>
+                                                                            beginEntryCorrection(
+                                                                                entry,
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        {t(
+                                                                            "edit",
+                                                                        )}
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    className="danger-link"
+                                                                    onClick={() =>
+                                                                        reverseEntry(
+                                                                            entry,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    {t(
+                                                                        "reverse",
+                                                                    )}
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                </div>
+                                            </article>
+                                        ))}
+                                    </div>
+                                    {ledgerPage.last_page > 1 && (
+                                        <div className="pagination-row">
+                                            <button
+                                                className="secondary compact"
+                                                disabled={
+                                                    ledgerPage.current_page <= 1
+                                                }
+                                                onClick={() =>
+                                                    loadLedger(
+                                                        selected,
+                                                        ledgerPage.current_page -
+                                                            1,
+                                                    )
+                                                }
+                                            >
+                                                ‹
+                                            </button>
+                                            <span>
+                                                {ledgerPage.current_page} /{" "}
+                                                {ledgerPage.last_page}
+                                            </span>
+                                            <button
+                                                className="secondary compact"
+                                                disabled={
+                                                    ledgerPage.current_page >=
+                                                    ledgerPage.last_page
+                                                }
+                                                onClick={() =>
+                                                    loadLedger(
+                                                        selected,
+                                                        ledgerPage.current_page +
+                                                            1,
+                                                    )
+                                                }
+                                            >
+                                                ›
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <Empty t={t} />
+                            )}
+                        </>
+                    )}
+                </section>
+            )}
+        </div>
+    );
+}
+
+function HistoryManager({ t, onOpenSale, onOpenCustomer }) {
+    const [rows, setRows] = useState([]);
+    const [options, setOptions] = useState({ customers: [] });
+    const [filters, setFilters] = useState({
+        range: "today",
+        type: "",
+        customer_id: "",
+        from: "",
+        to: "",
+    });
+    const [page, setPage] = useState({
+        current_page: 1,
+        last_page: 1,
+        total: 0,
+    });
+    const [showFilters, setShowFilters] = useState(false);
+    const [error, setError] = useState("");
+    const load = useCallback(
+        async (nextPage = 1) => {
+            try {
+                const params = Object.fromEntries(
+                    Object.entries({
+                        ...filters,
+                        page: nextPage,
+                        per_page: 20,
+                    }).filter(([, value]) => value !== ""),
+                );
+                const response = await apiClient.get("/histories", { params });
+                setRows(response.data.data || []);
+                setPage({
+                    current_page: response.data.current_page || 1,
+                    last_page: response.data.last_page || 1,
+                    total: response.data.total || 0,
+                });
+                setError("");
+            } catch (requestError) {
+                setError(errorMessage(requestError, t("load_failed")));
+            }
+        },
+        [filters, t],
+    );
+    useEffect(() => {
+        load(1);
+    }, [load]);
+    useEffect(() => {
+        apiClient
+            .get("/histories/filter-options")
+            .then((response) => setOptions(response.data))
+            .catch(() => {});
+    }, []);
+    const label = (row) =>
+        row.type === "sale"
+            ? t("sale")
+            : row.type === "customer_paid"
+              ? t("customer_pays_shop")
+              : t("customer_receives_money");
+    return (
+        <section className="panel stack">
+            <div className="section-heading">
+                <div>
+                    <h2>{t("histories")}</h2>
+                    <small>
+                        {t(filters.range)} · {page.total}
+                    </small>
+                </div>
+                <button
+                    className="secondary compact"
+                    onClick={() => setShowFilters(true)}
+                >
+                    {t("filters")}
+                </button>
+            </div>
+            <Notice kind="error">{error}</Notice>
+            {showFilters && (
+                <Modal
+                    title={t("filters")}
+                    onClose={() => setShowFilters(false)}
+                >
+                    <form
+                        className="inset-form stack"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            setShowFilters(false);
+                            load(1);
+                        }}
+                    >
+                        <label>
+                            {t("date_range")}
+                            <select
+                                value={filters.range}
+                                onChange={(event) =>
+                                    setFilters({
+                                        ...filters,
+                                        range: event.target.value,
                                     })
                                 }
                             >
-                                <form
-                                    className="inset-form stack"
-                                    onSubmit={recordMoney}
-                                >
-                                    <div className="two-column">
-                                        <label>
-                                            {t("amount")}
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                inputMode="numeric"
-                                                value={moneyForm.amount_kyat}
-                                                onChange={(event) =>
-                                                    setMoneyForm({
-                                                        ...moneyForm,
-                                                        amount_kyat:
-                                                            event.target.value,
-                                                    })
-                                                }
-                                                required
-                                            />
-                                        </label>
-                                        <label>
-                                            {t("reason")}
-                                            <input
-                                                value={moneyForm.reason}
-                                                onChange={(event) =>
-                                                    setMoneyForm({
-                                                        ...moneyForm,
-                                                        reason: event.target
-                                                            .value,
-                                                    })
-                                                }
-                                                required
-                                            />
-                                        </label>
-                                    </div>
-                                    <label>
-                                        {t("note")}
-                                        <textarea
-                                            value={moneyForm.note}
-                                            onChange={(event) =>
-                                                setMoneyForm({
-                                                    ...moneyForm,
-                                                    note: event.target.value,
-                                                })
-                                            }
-                                        />
-                                    </label>
-                                    {hasPermission(
-                                        permissions,
-                                        "backdate_sale",
-                                    ) && (
-                                        <label>
-                                            {t("date_time")}
-                                            <input
-                                                type="datetime-local"
-                                                value={moneyForm.occurred_at}
-                                                max={nowForInput()}
-                                                onChange={(event) =>
-                                                    setMoneyForm({
-                                                        ...moneyForm,
-                                                        occurred_at:
-                                                            event.target.value,
-                                                    })
-                                                }
-                                                required
-                                            />
-                                        </label>
-                                    )}
-                                    <div className="button-row">
-                                        <button
-                                            type="button"
-                                            className="ghost"
-                                            onClick={() =>
-                                                setMoneyForm({
-                                                    ...moneyForm,
-                                                    type: "",
-                                                    occurred_at: "",
-                                                })
-                                            }
-                                        >
-                                            {t("cancel")}
-                                        </button>
-                                        <button
-                                            className="primary"
-                                            disabled={moneySaving}
-                                        >
-                                            {moneySaving
-                                                ? t("saving")
-                                                : t("save")}
-                                        </button>
-                                    </div>
-                                </form>
-                            </Modal>
-                        )}
-                        {correctionForm && (
-                            <Modal
-                                title={t("correct_ledger_entry")}
-                                onClose={() => setCorrectionForm(null)}
-                            >
-                                <form
-                                    className="inset-form stack"
-                                    onSubmit={correctEntry}
-                                >
-                                    <p className="muted">
-                                        {t(
-                                            `event_${correctionForm.event_type}`,
-                                        )}
-                                    </p>
-                                    <div className="two-column">
-                                        <label>
-                                            {t("corrected_amount")}
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                inputMode="numeric"
-                                                value={
-                                                    correctionForm.amount_kyat
-                                                }
-                                                onChange={(event) =>
-                                                    setCorrectionForm({
-                                                        ...correctionForm,
-                                                        amount_kyat:
-                                                            event.target.value,
-                                                    })
-                                                }
-                                                required
-                                            />
-                                        </label>
-                                        <label>
-                                            {t("correction_reason")}
-                                            <input
-                                                value={correctionForm.reason}
-                                                onChange={(event) =>
-                                                    setCorrectionForm({
-                                                        ...correctionForm,
-                                                        reason: event.target
-                                                            .value,
-                                                    })
-                                                }
-                                                required
-                                            />
-                                        </label>
-                                    </div>
-                                    {hasPermission(
-                                        permissions,
-                                        "backdate_sale",
-                                    ) && (
-                                        <label>
-                                            {t("date_time")}
-                                            <input
-                                                type="datetime-local"
-                                                value={
-                                                    correctionForm.occurred_at
-                                                }
-                                                max={nowForInput()}
-                                                onChange={(event) =>
-                                                    setCorrectionForm({
-                                                        ...correctionForm,
-                                                        occurred_at:
-                                                            event.target.value,
-                                                    })
-                                                }
-                                                required
-                                            />
-                                        </label>
-                                    )}
-                                    <label>
-                                        {t("note")}
-                                        <textarea
-                                            value={correctionForm.note}
-                                            onChange={(event) =>
-                                                setCorrectionForm({
-                                                    ...correctionForm,
-                                                    note: event.target.value,
-                                                })
-                                            }
-                                        />
-                                    </label>
-                                    <div className="button-row">
-                                        <button
-                                            type="button"
-                                            className="ghost"
-                                            onClick={() =>
-                                                setCorrectionForm(null)
-                                            }
-                                        >
-                                            {t("cancel")}
-                                        </button>
-                                        <button
-                                            className="primary"
-                                            disabled={correctionSaving}
-                                        >
-                                            {correctionSaving
-                                                ? t("saving")
-                                                : t("save_entry_correction")}
-                                        </button>
-                                    </div>
-                                </form>
-                            </Modal>
-                        )}
-                        {hasPermission(
-                            permissions,
-                            "view_customer_statements",
-                        ) && (
-                            <>
-                                <button
-                                    type="button"
-                                    className="secondary compact"
-                                    onClick={() => setShowLedgerFilters(true)}
-                                >
-                                    {t("filters")}
-                                </button>
-                                {showLedgerFilters && (
-                                    <Modal
-                                        title={t("filters")}
-                                        onClose={() =>
-                                            setShowLedgerFilters(false)
+                                <option value="today">{t("today")}</option>
+                                <option value="yesterday">
+                                    {t("yesterday")}
+                                </option>
+                                <option value="this_week">
+                                    {t("this_week")}
+                                </option>
+                                <option value="this_month">
+                                    {t("this_month")}
+                                </option>
+                                <option value="custom">{t("custom")}</option>
+                            </select>
+                        </label>
+                        {filters.range === "custom" && (
+                            <div className="two-column">
+                                <label>
+                                    {t("from")}
+                                    <input
+                                        type="date"
+                                        value={filters.from}
+                                        onChange={(event) =>
+                                            setFilters({
+                                                ...filters,
+                                                from: event.target.value,
+                                            })
                                         }
-                                    >
-                                        <form
-                                            className="filter-grid ledger-filter"
-                                            onSubmit={applyLedgerFilter}
-                                        >
-                                            <label>
-                                                {t("from")}
-                                                <input
-                                                    type="date"
-                                                    value={ledgerRange.from}
-                                                    onChange={(event) =>
-                                                        setLedgerRange(
-                                                            (current) => ({
-                                                                ...current,
-                                                                from: event
-                                                                    .target
-                                                                    .value,
-                                                            }),
-                                                        )
-                                                    }
-                                                />
-                                            </label>
-                                            <label>
-                                                {t("to")}
-                                                <input
-                                                    type="date"
-                                                    value={ledgerRange.to}
-                                                    onChange={(event) =>
-                                                        setLedgerRange(
-                                                            (current) => ({
-                                                                ...current,
-                                                                to: event.target
-                                                                    .value,
-                                                            }),
-                                                        )
-                                                    }
-                                                />
-                                            </label>
-                                            <button
-                                                className="secondary"
-                                                type="submit"
-                                            >
-                                                {t("apply_filter")}
-                                            </button>
-                                            <button
-                                                className="ghost"
-                                                type="button"
-                                                onClick={() => {
-                                                    setLedgerRange({
-                                                        from: "",
-                                                        to: "",
-                                                    });
-                                                    setAppliedLedgerRange({
-                                                        from: "",
-                                                        to: "",
-                                                    });
-                                                    setShowLedgerFilters(false);
-                                                }}
-                                            >
-                                                {t("clear_filter")}
-                                            </button>
-                                        </form>
-                                    </Modal>
-                                )}
-                            </>
-                        )}
-                        <div className="section-heading">
-                            <h3>{t("activity")}</h3>
-                            <span className="pill">{ledger.length}</span>
-                        </div>
-                        {ledger.length ? (
-                            <div className="timeline">
-                                {ledger.map((entry) => (
-                                    <article
-                                        className="timeline-entry"
-                                        key={entry.id}
-                                    >
-                                        <span
-                                            className={`timeline-dot ${entry.amount_kyat >= 0 ? "positive" : "negative"}`}
-                                        />
-                                        <div>
-                                            <strong>
-                                                {t(`event_${entry.event_type}`)}
-                                            </strong>
-                                            <small>
-                                                {new Date(
-                                                    entry.occurred_at,
-                                                ).toLocaleString()}
-                                            </small>
-                                            {entry.reason && (
-                                                <small>{entry.reason}</small>
-                                            )}
-                                            {entry.meta?.note && (
-                                                <small>{entry.meta.note}</small>
-                                            )}
-                                            {entry.actor?.name && (
-                                                <small>
-                                                    {t("recorded_by")}:{" "}
-                                                    {entry.actor.name}
-                                                </small>
-                                            )}
-                                        </div>
-                                        <div className="align-right">
-                                            <strong>
-                                                {entry.amount_kyat >= 0
-                                                    ? "+"
-                                                    : "−"}
-                                                {money(
-                                                    Math.abs(entry.amount_kyat),
-                                                )}
-                                            </strong>
-                                            <small>
-                                                {t("balance")}:{" "}
-                                                {money(
-                                                    entry.balance_after_kyat,
-                                                )}
-                                            </small>
-                                            {entry.reversed_by?.length > 0 && (
-                                                <small className="danger-text">
-                                                    {t("reversed_status")}
-                                                </small>
-                                            )}
-                                            {hasPermission(
-                                                permissions,
-                                                "correct_reverse_ledger",
-                                            ) &&
-                                                [
-                                                    "customer_paid",
-                                                    "money_lent",
-                                                    "opening_balance_adjustment",
-                                                ].includes(entry.event_type) &&
-                                                !entry.reversed_by?.length && (
-                                                    <div className="button-row compact-actions">
-                                                        {[
-                                                            "customer_paid",
-                                                            "money_lent",
-                                                        ].includes(
-                                                            entry.event_type,
-                                                        ) && (
-                                                            <button
-                                                                className="secondary compact"
-                                                                onClick={() =>
-                                                                    beginEntryCorrection(
-                                                                        entry,
-                                                                    )
-                                                                }
-                                                            >
-                                                                {t("edit")}
-                                                            </button>
-                                                        )}
-                                                        <button
-                                                            className="danger-link"
-                                                            onClick={() =>
-                                                                reverseEntry(
-                                                                    entry,
-                                                                )
-                                                            }
-                                                        >
-                                                            {t("reverse")}
-                                                        </button>
-                                                    </div>
-                                                )}
-                                        </div>
-                                    </article>
-                                ))}
+                                    />
+                                </label>
+                                <label>
+                                    {t("to")}
+                                    <input
+                                        type="date"
+                                        value={filters.to}
+                                        onChange={(event) =>
+                                            setFilters({
+                                                ...filters,
+                                                to: event.target.value,
+                                            })
+                                        }
+                                    />
+                                </label>
                             </div>
-                        ) : (
-                            <Empty t={t} />
                         )}
-                    </>
-                )}
-            </section>
-        </div>
+                        <label>
+                            {t("type")}
+                            <select
+                                value={filters.type}
+                                onChange={(event) =>
+                                    setFilters({
+                                        ...filters,
+                                        type: event.target.value,
+                                    })
+                                }
+                            >
+                                <option value="">{t("all")}</option>
+                                <option value="sale">{t("sale")}</option>
+                                <option value="customer_paid">
+                                    {t("customer_pays_shop")}
+                                </option>
+                                <option value="money_lent">
+                                    {t("customer_receives_money")}
+                                </option>
+                            </select>
+                        </label>
+                        <label>
+                            {t("customer")}
+                            <select
+                                value={filters.customer_id}
+                                onChange={(event) =>
+                                    setFilters({
+                                        ...filters,
+                                        customer_id: event.target.value,
+                                    })
+                                }
+                            >
+                                <option value="">{t("all")}</option>
+                                {options.customers?.map((customer) => (
+                                    <option
+                                        key={customer.id}
+                                        value={customer.id}
+                                    >
+                                        {customer.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <button className="primary">
+                            {t("apply_filters")}
+                        </button>
+                    </form>
+                </Modal>
+            )}
+            {rows.length ? (
+                <div className="list">
+                    {rows.map((row) => (
+                        <button
+                            className="history-row"
+                            key={`${row.type}-${row.id}`}
+                            onClick={() =>
+                                row.type === "sale"
+                                    ? onOpenSale(row.record_id)
+                                    : onOpenCustomer(row.customer?.id)
+                            }
+                        >
+                            <span>
+                                <strong>{label(row)}</strong>
+                                <small>
+                                    {row.customer?.name || t("walkin")} ·{" "}
+                                    {new Date(row.occurred_at).toLocaleString()}
+                                </small>
+                            </span>
+                            <div className="row-end">
+                                <strong>{money(row.amount_kyat)}</strong>
+                                <span className="row-arrow" aria-hidden="true">
+                                    ›
+                                </span>
+                            </div>
+                        </button>
+                    ))}
+                </div>
+            ) : (
+                <Empty t={t} />
+            )}
+            {page.last_page > 1 && (
+                <div className="pagination-row">
+                    <button
+                        className="secondary compact"
+                        disabled={page.current_page <= 1}
+                        onClick={() => load(page.current_page - 1)}
+                    >
+                        ‹
+                    </button>
+                    <span>
+                        {page.current_page} / {page.last_page}
+                    </span>
+                    <button
+                        className="secondary compact"
+                        disabled={page.current_page >= page.last_page}
+                        onClick={() => load(page.current_page + 1)}
+                    >
+                        ›
+                    </button>
+                </div>
+            )}
+        </section>
+    );
+}
+
+function SaleDetailScreen({ t, saleId, onBack }) {
+    const [sale, setSale] = useState(null);
+    const [error, setError] = useState("");
+    useEffect(() => {
+        apiClient
+            .get(`/histories/sales/${saleId}`)
+            .then((response) => setSale(response.data))
+            .catch((requestError) =>
+                setError(errorMessage(requestError, t("load_failed"))),
+            );
+    }, [saleId, t]);
+    return (
+        <section className="screen panel stack">
+            <button className="text-button back-link" onClick={onBack}>
+                ‹ {t("histories")}
+            </button>
+            <Notice kind="error">{error}</Notice>
+            {sale ? (
+                <>
+                    <div className="section-heading">
+                        <div>
+                            <p className="eyebrow">{t("sale_details")}</p>
+                            <h2>{sale.invoice_number}</h2>
+                            <small>
+                                {sale.customer?.name || t("walkin")} ·{" "}
+                                {new Date(sale.sale_at).toLocaleString()}
+                            </small>
+                        </div>
+                        <strong>{money(sale.total_kyat)}</strong>
+                    </div>
+                    <div className="list">
+                        {sale.items?.map((item) => (
+                            <div className="list-row" key={item.id}>
+                                <span>
+                                    <strong>{item.curry_name_snapshot}</strong>
+                                    <small>
+                                        {item.quantity} ×{" "}
+                                        {money(item.unit_price_snapshot_kyat)}
+                                    </small>
+                                </span>
+                                <strong>{money(item.line_total_kyat)}</strong>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="totals">
+                        <span>
+                            {t("subtotal")}
+                            <b>{money(sale.subtotal_kyat)}</b>
+                        </span>
+                        <span>
+                            {t("discount")}
+                            <b>{money(sale.discount_kyat)}</b>
+                        </span>
+                        <span>
+                            {t("paid_amount")}
+                            <b>{money(sale.paid_kyat)}</b>
+                        </span>
+                        <span>
+                            {t("unpaid")}
+                            <b>{money(Math.abs(sale.unpaid_kyat))}</b>
+                        </span>
+                    </div>
+                    {sale.note && (
+                        <small>
+                            {t("note")}: {sale.note}
+                        </small>
+                    )}
+                </>
+            ) : (
+                !error && <Loading t={t} />
+            )}
+        </section>
     );
 }
 
@@ -2055,7 +2412,6 @@ function ReportsScreen({ t }) {
         from: "",
         to: "",
         customer_id: "",
-        curry_category_id: "",
         curry_item_id: "",
         paid_status: "",
     });
@@ -2224,31 +2580,6 @@ function ReportsScreen({ t }) {
                                 </select>
                             </label>
                             <label>
-                                {t("category")}
-                                <select
-                                    value={filters.curry_category_id}
-                                    onChange={(event) =>
-                                        change(
-                                            "curry_category_id",
-                                            event.target.value,
-                                        )
-                                    }
-                                >
-                                    <option value="">{t("all")}</option>
-                                    {options.categories.map((category) => (
-                                        <option
-                                            key={category.id}
-                                            value={category.id}
-                                        >
-                                            {category.name}
-                                            {!category.is_active
-                                                ? ` (${t("inactive")})`
-                                                : ""}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                            <label>
                                 {t("curry")}
                                 <select
                                     value={filters.curry_item_id}
@@ -2367,6 +2698,7 @@ function ReportsScreen({ t }) {
     );
 }
 
+// eslint-disable-next-line no-unused-vars
 function SalesManager({ t, permissions, online }) {
     const [sales, setSales] = useState([]);
     const [customers, setCustomers] = useState([]);
@@ -2761,7 +3093,7 @@ function SalesManager({ t, permissions, online }) {
 }
 
 function CurryManager({ t }) {
-    const [categories, setCategories] = useState([]);
+    const categories = [];
     const [items, setItems] = useState([]);
     const [showCategoryForm, setShowCategoryForm] = useState(false);
     const [showItemForm, setShowItemForm] = useState(false);
@@ -2778,7 +3110,6 @@ function CurryManager({ t }) {
         id: null,
         name: "",
         current_price_kyat: "",
-        curry_category_id: "",
         display_order: 0,
         is_available: true,
     };
@@ -2787,11 +3118,7 @@ function CurryManager({ t }) {
     const [success, setSuccess] = useState("");
     const load = useCallback(async () => {
         try {
-            const [categoriesResponse, itemsResponse] = await Promise.all([
-                apiClient.get("/curry-categories"),
-                apiClient.get("/curry-items"),
-            ]);
-            setCategories(categoriesResponse.data);
+            const itemsResponse = await apiClient.get("/curry-items");
             setItems(itemsResponse.data);
         } catch (error) {
             setError(errorMessage(error, t("load_failed")));
@@ -2834,9 +3161,6 @@ function CurryManager({ t }) {
             const payload = {
                 ...form,
                 current_price_kyat: Number(form.current_price_kyat),
-                curry_category_id: form.curry_category_id
-                    ? Number(form.curry_category_id)
-                    : null,
                 display_order: Number(form.display_order || 0),
             };
             if (form.id)
@@ -2855,7 +3179,6 @@ function CurryManager({ t }) {
             id: item.id,
             name: item.name,
             current_price_kyat: item.current_price_kyat,
-            curry_category_id: item.curry_category_id || "",
             display_order: item.display_order || 0,
             is_available: item.is_available,
         });
@@ -2878,15 +3201,6 @@ function CurryManager({ t }) {
             <div className="section-heading">
                 <h2>{t("curry_management")}</h2>
                 <div className="button-row">
-                    <button
-                        className="secondary compact"
-                        onClick={() => {
-                            setCategoryForm({ ...emptyCategoryForm });
-                            setShowCategoryForm(true);
-                        }}
-                    >
-                        {t("new_category")}
-                    </button>
                     <button
                         className="primary compact"
                         onClick={() => {
@@ -3010,48 +3324,23 @@ function CurryManager({ t }) {
                                     required
                                 />
                             </label>
-                            <div className="two-column">
-                                <label>
-                                    {t("price")}
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        inputMode="numeric"
-                                        value={form.current_price_kyat}
-                                        onChange={(event) =>
-                                            setForm({
-                                                ...form,
-                                                current_price_kyat:
-                                                    event.target.value,
-                                            })
-                                        }
-                                        required
-                                    />
-                                </label>
-                                <label>
-                                    {t("category")}
-                                    <select
-                                        value={form.curry_category_id}
-                                        onChange={(event) =>
-                                            setForm({
-                                                ...form,
-                                                curry_category_id:
-                                                    event.target.value,
-                                            })
-                                        }
-                                    >
-                                        <option value="">{t("none")}</option>
-                                        {categories.map((category) => (
-                                            <option
-                                                value={category.id}
-                                                key={category.id}
-                                            >
-                                                {category.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                            </div>
+                            <label>
+                                {t("price")}
+                                <input
+                                    type="number"
+                                    min="0"
+                                    inputMode="numeric"
+                                    value={form.current_price_kyat}
+                                    onChange={(event) =>
+                                        setForm({
+                                            ...form,
+                                            current_price_kyat:
+                                                event.target.value,
+                                        })
+                                    }
+                                    required
+                                />
+                            </label>
                             <div className="two-column">
                                 <label>
                                     {t("display_order")}
@@ -3094,7 +3383,6 @@ function CurryManager({ t }) {
                         <div>
                             <strong>{item.name}</strong>
                             <small>
-                                {item.category?.name || t("uncategorized")} ·{" "}
                                 {item.is_available
                                     ? t("available")
                                     : t("unavailable")}
@@ -3477,7 +3765,9 @@ function MoreScreen({
     permissions,
     initialPanel,
     onPanelChange,
-    online,
+    onOpenSale,
+    onOpenCustomer,
+    online: _online,
     locale,
     onLocale,
     onLogout,
@@ -3485,7 +3775,7 @@ function MoreScreen({
     const available = useMemo(
         () =>
             [
-                hasPermission(permissions, "view_sales_history") && "sales",
+                hasPermission(permissions, "view_sales_history") && "histories",
                 hasPermission(permissions, "manage_curry_items") && "curries",
                 hasPermission(permissions, "manage_staff_and_permissions") &&
                     "staff",
@@ -3520,8 +3810,12 @@ function MoreScreen({
                     </button>
                 ))}
             </div>
-            {panel === "sales" && (
-                <SalesManager t={t} permissions={permissions} online={online} />
+            {panel === "histories" && (
+                <HistoryManager
+                    t={t}
+                    onOpenSale={onOpenSale}
+                    onOpenCustomer={onOpenCustomer}
+                />
             )}
             {panel === "curries" && <CurryManager t={t} />}
             {panel === "staff" && <StaffManager t={t} />}
@@ -3577,6 +3871,9 @@ export default function App() {
     const [presetCustomer, setPresetCustomer] = useState(null);
     const [online, setOnline] = useState(navigator.onLine);
     const [updateReady, setUpdateReady] = useState(false);
+    useEffect(() => {
+        document.documentElement.lang = locale === "my" ? "my" : "en";
+    }, [locale]);
     const refreshSession = useCallback(async () => {
         try {
             const response = await apiClient.get("/auth/session");
@@ -3791,17 +4088,28 @@ export default function App() {
                         t={t}
                         permissions={session.permissions}
                         initialCustomerId={subview}
+                        onOpenCustomer={(id) => goTo("customers", id)}
+                        onBack={() => goTo("customers")}
                         onNewSale={newSaleFor}
                         online={online}
                     />
                 )}
                 {activeView === "reports" && <ReportsScreen t={t} />}
+                {activeView === "sale_detail" && (
+                    <SaleDetailScreen
+                        t={t}
+                        saleId={subview}
+                        onBack={() => goTo("more", "histories")}
+                    />
+                )}
                 {activeView === "more" && (
                     <MoreScreen
                         t={t}
                         permissions={session.permissions}
                         initialPanel={subview}
                         onPanelChange={(panel) => goTo("more", panel)}
+                        onOpenSale={(id) => goTo("sale_detail", id)}
+                        onOpenCustomer={(id) => goTo("customers", id)}
                         online={online}
                         locale={locale}
                         onLocale={saveLocale}

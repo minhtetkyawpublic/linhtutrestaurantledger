@@ -25,7 +25,10 @@ const en = {
     more: "More",
     settings: "Settings",
     language: "Language",
-    sales: "sales",
+    sales: "Sales",
+    histories: "Histories",
+    sale: "Sale",
+    type: "Type",
     curries: "Curries",
     staff: "Staff",
     recorded_by: "Recorded by",
@@ -240,6 +243,9 @@ const en = {
 };
 
 const my = {
+    histories: "မှတ်တမ်းများ",
+    sale: "အရောင်း",
+    type: "အမျိုးအစား",
     app_name: "လင်းထွဋ် စားသောက်ဆိုင် ငွေစာရင်း",
     restaurant_ledger: "စားသောက်ဆိုင် ဖောက်သည်ငွေစာရင်း",
     login_welcome: "အရောင်းနှင့် ဖောက်သည်လက်ကျန်များ မှတ်တမ်းတင်ရန် ဝင်ပါ။",

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CurryCategory;
 use App\Models\CurryItem;
 use App\Models\Customer;
 use App\Models\CustomerLedgerEntry;
@@ -20,14 +19,10 @@ class ReportController extends Controller
             'customers' => Customer::query()
                 ->orderBy('name')
                 ->get(['id', 'name', 'is_active', 'is_archived']),
-            'categories' => CurryCategory::query()
-                ->orderBy('display_order')
-                ->orderBy('name')
-                ->get(['id', 'name', 'is_active']),
             'curries' => CurryItem::query()
                 ->orderBy('display_order')
                 ->orderBy('name')
-                ->get(['id', 'name', 'curry_category_id', 'is_archived']),
+                ->get(['id', 'name', 'is_archived']),
         ]);
     }
 
@@ -63,14 +58,8 @@ class ReportController extends Controller
             ->when($request->filled('customer_id'), function ($query) use ($request) {
                 $query->where('customer_id', (int) $request->query('customer_id'));
             })
-            ->when($request->filled('curry_category_id') || $request->filled('curry_item_id'), function ($query) use ($request) {
+            ->when($request->filled('curry_item_id'), function ($query) use ($request) {
                 $query->whereHas('items', function ($itemsQuery) use ($request) {
-                    if ($request->filled('curry_category_id')) {
-                        $itemsQuery->whereHas('curryItem', function ($curryQuery) use ($request) {
-                            $curryQuery->where('curry_category_id', (int) $request->query('curry_category_id'));
-                        });
-                    }
-
                     if ($request->filled('curry_item_id')) {
                         $itemsQuery->where('curry_item_id', (int) $request->query('curry_item_id'));
                     }
@@ -265,13 +254,6 @@ class ReportController extends Controller
 
         if ($request->filled('customer_id')) {
             $query->where('customer_id', (int) $request->query('customer_id'));
-        }
-
-        if ($request->filled('curry_category_id')) {
-            $categoryId = (int) $request->query('curry_category_id');
-            $query->whereHas('items.curryItem', function ($q) use ($categoryId) {
-                $q->where('curry_category_id', $categoryId);
-            });
         }
 
         if ($request->filled('curry_item_id')) {
