@@ -35,13 +35,11 @@ page.on("pageerror", (error) => errors.push(error.message));
 page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text());
 });
-await page.route("**/icon-192.png", async (route) => {
+await page.route("**/linhtuticon.jpg", async (route) => {
     await route.fulfill({
         status: 200,
-        contentType: "image/png",
-        body: await fs.readFile(
-            path.join(projectRoot, "public", "icon-192.png"),
-        ),
+        contentType: "image/jpeg",
+        body: await fs.readFile(path.join(projectRoot, "linhtuticon.jpg")),
     });
 });
 

@@ -95,7 +95,7 @@ describe("restaurant ledger app shell", () => {
         expect(screen.getByRole("button", { name: "Login" })).toBeEnabled();
         expect(container.querySelector(".brand-icon")).toHaveAttribute(
             "src",
-            "/icon-192.png",
+            "/linhtuticon.jpg",
         );
     });
 

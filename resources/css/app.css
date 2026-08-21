@@ -203,7 +203,8 @@ textarea:focus {
     flex: 0 0 auto;
     border: 1px solid #ddcfbf;
     border-radius: 18px;
-    object-fit: cover;
+    background: #f8f5ef;
+    object-fit: contain;
     box-shadow: 0 8px 22px rgba(71, 48, 27, 0.16);
 }
 .brand-icon.small {

@@ -13,6 +13,7 @@ self.addEventListener("install", (event) => {
                 cache.addAll([
                     "./offline.html",
                     "./manifest.webmanifest",
+                    "./linhtuticon.jpg",
                     "./icon-180.png",
                     "./icon-192.png",
                     "./icon-512.png",

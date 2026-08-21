@@ -31,7 +31,8 @@ Status: implemented and automated locally.
 - Install manifest, valid 192/512 icons, service worker with API bypass,
   static offline fallback, online/offline state, save blocking while offline,
   update-ready prompt, and History API routes that survive direct refreshes.
-- App/favicon/Apple/maskable icons are generated from `linhtuticon.jpg`;
+- The app displays the complete `linhtuticon.jpg`, and favicon/Apple/maskable
+  variants preserve the full artwork without cropping;
   compact phone views use centered fade-in modals rather than bottom sheets,
   with secondary report content collapsed by default.
 - Authentication refreshes the SPA CSRF token after Laravel regenerates the

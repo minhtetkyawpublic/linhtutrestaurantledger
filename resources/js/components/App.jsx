@@ -72,7 +72,7 @@ function BrandIcon({ small = false }) {
     return (
         <img
             className={`brand-icon ${small ? "small" : ""}`}
-            src={`${APP_BASE_PATH}/icon-192.png`}
+            src={`${APP_BASE_PATH}/linhtuticon.jpg`}
             alt=""
         />
     );

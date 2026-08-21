@@ -22,6 +22,7 @@ const versionFiles = [
     templatePath,
     path.join(projectRoot, "public", "manifest.webmanifest"),
     path.join(projectRoot, "public", "offline.html"),
+    path.join(projectRoot, "public", "linhtuticon.jpg"),
     path.join(projectRoot, "public", "icon-180.png"),
     path.join(projectRoot, "public", "icon-192.png"),
     path.join(projectRoot, "public", "icon-512.png"),

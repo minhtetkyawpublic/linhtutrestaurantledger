@@ -10,7 +10,7 @@
 - Latest local migration: `2026_08_20_000008_expand_ledger_reason_column`
 - Verification date: `2026-08-20` (`Asia/Yangon`)
 - Frontend result: 19 UI tests; production build assets and service worker
-  version `cf089a45cd76` verified
+  version `09b9849aea97` verified
 - Development frontend result: live Vite/React Chrome test passes with the
   refresh preamble and application CSS loaded; Vite was stopped and
   `public/hot` removed after verification
