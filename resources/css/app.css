@@ -690,47 +690,83 @@ textarea:focus {
     justify-items: end;
 }
 .customer-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     width: 100%;
-    border-width: 0 0 1px;
-    background: transparent;
+    min-height: 58px;
+    margin: 0;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid #eee3d8;
+    border-radius: 12px;
+    background: #fffdfa;
     color: inherit;
     text-align: left;
-    min-height: 62px;
-    padding: 0.55rem 0.35rem;
+    box-shadow: 0 2px 7px rgba(70, 45, 24, 0.035);
     transition:
         background 0.15s ease,
-        transform 0.15s ease;
+        border-color 0.15s ease,
+        transform 0.15s ease,
+        box-shadow 0.15s ease;
 }
 .customer-row:hover,
 .customer-row:focus-visible {
-    border-radius: 10px;
     background: #fff7ef;
+    border-color: #edc7a7;
+    box-shadow: 0 5px 14px rgba(159, 75, 15, 0.09);
 }
 .customer-row:active {
     transform: scale(0.995);
 }
 .customer-row > span:first-child strong {
-    font-size: 0.92rem;
-    line-height: 1.35;
+    font-size: 0.9rem;
+    line-height: 1.45;
 }
 .customer-row > span:first-child small {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
+    line-height: 1.35;
+}
+.customer-list {
+    display: grid;
+    gap: 0.42rem;
+}
+.customer-row .row-end {
+    display: grid;
+    grid-template-columns: minmax(88px, auto) 14px;
+    gap: 0.4rem;
+    align-items: center;
+}
+.customer-row .balance {
+    gap: 0;
+    line-height: 1.25;
 }
 .customer-row .balance span {
-    font-size: 0.6rem;
+    max-width: 130px;
+    overflow: hidden;
+    font-size: 0.57rem;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .customer-row .balance strong {
-    font-size: 0.78rem;
+    font-size: 0.76rem;
+    line-height: 1.35;
 }
 .customer-row .row-arrow {
-    font-size: 1.25rem;
+    font-size: 1.15rem;
+    line-height: 1;
 }
 .customer-row.selected {
-    margin: 0 -0.5rem;
-    width: calc(100% + 1rem);
-    padding-inline: 0.7rem;
-    border-radius: 12px;
+    margin: 0;
+    width: 100%;
+    border-color: #efc09a;
     background: #fff0e5;
+}
+
+html[lang="my"] .customer-row strong,
+html[lang="my"] .customer-row small,
+html[lang="my"] .customer-row .balance span,
+html[lang="my"] .customer-row .balance strong {
+    line-height: 1.45;
 }
 .balance {
     display: grid;
