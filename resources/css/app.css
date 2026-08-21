@@ -1254,11 +1254,6 @@ textarea:focus {
     .sale-card {
         align-items: flex-start;
     }
-    .customer-list {
-        max-height: 220px;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-    }
     .compact-filter-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
