@@ -10,6 +10,7 @@ use App\Models\Role;
 use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class PermissionAndReadinessTest extends TestCase
@@ -60,7 +61,6 @@ class PermissionAndReadinessTest extends TestCase
         $archivedCurry = CurryItem::query()->create([
             'name' => 'Archived report curry',
             'current_price_kyat' => 500,
-            'curry_category_id' => null,
             'is_archived' => true,
         ]);
         $archivedCustomer = Customer::query()->create([
@@ -111,6 +111,38 @@ class PermissionAndReadinessTest extends TestCase
             ->assertJsonPath('customers_owe_count', 0);
     }
 
+    public function test_dashboard_balance_query_count_does_not_grow_with_customers(): void
+    {
+        $dashboardUser = $this->makeUserWithPermissions(['view_dashboard']);
+        foreach (range(1, 30) as $index) {
+            $customer = Customer::query()->create([
+                'name' => "Scale Customer {$index}",
+                'is_active' => true,
+                'is_archived' => false,
+            ]);
+            CustomerLedgerEntry::query()->create([
+                'customer_id' => $customer->id,
+                'actor_user_id' => $dashboardUser->id,
+                'event_type' => 'money_lent',
+                'amount_kyat' => 100,
+                'balance_after_kyat' => 100,
+                'occurred_at' => now(),
+            ]);
+        }
+        $queries = 0;
+        DB::listen(function () use (&$queries) {
+            $queries++;
+        });
+
+        $this->actingAs($dashboardUser)
+            ->getJson('/api/dashboard')
+            ->assertOk()
+            ->assertJsonPath('total_customer_debt', 3000)
+            ->assertJsonPath('customers_owe_count', 30);
+
+        $this->assertLessThanOrEqual(15, $queries);
+    }
+
     public function test_paginated_customer_ledger_respects_statement_permission(): void
     {
         $customer = Customer::query()->create([
@@ -144,7 +176,6 @@ class PermissionAndReadinessTest extends TestCase
         $item = CurryItem::query()->create([
             'name' => 'Protected Curry',
             'current_price_kyat' => 1000,
-            'curry_category_id' => null,
         ]);
         $sale = Sale::query()->create([
             'user_id' => $viewer->id,
@@ -174,6 +205,7 @@ class PermissionAndReadinessTest extends TestCase
         $this->actingAs($viewer)->putJson("/api/sales/{$sale->id}", [])->assertForbidden();
         $this->actingAs($viewer)->postJson("/api/sales/{$sale->id}/reverse", [])->assertForbidden();
         $this->actingAs($viewer)->postJson('/api/curry-items', [])->assertForbidden();
+        $this->actingAs($viewer)->getJson('/api/curry-items')->assertForbidden();
         $this->actingAs($viewer)->putJson("/api/curry-items/{$item->id}", [])->assertForbidden();
         $this->actingAs($viewer)->postJson("/api/curry-items/{$item->id}/archive", [])->assertForbidden();
         $this->actingAs($viewer)->getJson('/api/admin/roles')->assertForbidden();

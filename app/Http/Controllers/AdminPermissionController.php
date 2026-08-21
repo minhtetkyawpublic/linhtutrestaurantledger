@@ -10,8 +10,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 
 class AdminPermissionController extends Controller
 {
@@ -30,28 +32,51 @@ class AdminPermissionController extends Controller
             ->get();
     }
 
-    public function staff()
+    public function staff(Request $request)
     {
+        $validated = $request->validate([
+            'q' => ['nullable', 'string', 'max:100'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        $query = trim((string) ($validated['q'] ?? ''));
+
         return User::query()
             ->with([
                 'roles:id,name,display_name',
                 'roles.permissions:id,name,label',
                 'directPermissions:id,name,label',
             ])
+            ->when($query !== '', function ($staff) use ($query) {
+                $staff->where(function ($search) use ($query) {
+                    $search->where('name', 'like', "%{$query}%")
+                        ->orWhere('email', 'like', "%{$query}%");
+                });
+            })
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'is_disabled', 'ui_locale', 'created_at']);
+            ->orderBy('id')
+            ->paginate($validated['per_page'] ?? 25, [
+                'id',
+                'name',
+                'email',
+                'is_disabled',
+                'ui_locale',
+                'created_at',
+            ]);
     }
 
     public function createStaff(Request $request)
     {
+        $request->merge(['email' => strtolower(trim((string) $request->input('email')))]);
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'max:255', Password::min(10)->letters()->mixedCase()->numbers()],
-            'role_ids' => ['nullable', 'array'],
-            'role_ids.*' => ['integer', 'exists:roles,id'],
-            'permission_ids' => ['nullable', 'array'],
-            'permission_ids.*' => ['integer', 'exists:permissions,id'],
+            'password' => ['required', 'string', 'max:255', Password::min(12)->letters()->mixedCase()->numbers()->symbols()],
+            'role_ids' => ['nullable', 'array', 'max:100'],
+            'role_ids.*' => ['integer', 'distinct', 'exists:roles,id'],
+            'permission_ids' => ['nullable', 'array', 'max:100'],
+            'permission_ids.*' => ['integer', 'distinct', 'exists:permissions,id'],
         ]);
 
         $user = DB::transaction(function () use ($request, $validated) {
@@ -78,16 +103,22 @@ class AdminPermissionController extends Controller
 
     public function updateStaff(Request $request, User $user)
     {
+        $request->merge(['email' => strtolower(trim((string) $request->input('email')))]);
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'role_ids' => ['nullable', 'array'],
-            'role_ids.*' => ['integer', 'exists:roles,id'],
-            'permission_ids' => ['nullable', 'array'],
-            'permission_ids.*' => ['integer', 'exists:permissions,id'],
+            'role_ids' => ['nullable', 'array', 'max:100'],
+            'role_ids.*' => ['integer', 'distinct', 'exists:roles,id'],
+            'permission_ids' => ['nullable', 'array', 'max:100'],
+            'permission_ids.*' => ['integer', 'distinct', 'exists:permissions,id'],
         ]);
 
         DB::transaction(function () use ($request, $validated, $user) {
+            Permission::query()
+                ->where('name', 'manage_staff_and_permissions')
+                ->lockForUpdate()
+                ->firstOrFail();
+            $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             $before = [
                 'name' => $user->name,
                 'email' => $user->email,
@@ -101,6 +132,7 @@ class AdminPermissionController extends Controller
             ]);
             $user->roles()->sync($validated['role_ids'] ?? []);
             $user->directPermissions()->sync($validated['permission_ids'] ?? []);
+            $this->assertActiveManagerRemains();
 
             $this->audit($request, 'staff_updated', $user, [
                 'before' => $before,
@@ -119,12 +151,16 @@ class AdminPermissionController extends Controller
     public function resetPassword(Request $request, User $user)
     {
         $validated = $request->validate([
-            'password' => ['required', 'string', 'max:255', 'confirmed', Password::min(10)->letters()->mixedCase()->numbers()],
+            'password' => ['required', 'string', 'max:255', 'confirmed', Password::min(12)->letters()->mixedCase()->numbers()->symbols()],
             'reason' => ['required', 'string', 'max:255'],
         ]);
 
-        $user->update(['password' => Hash::make($validated['password'])]);
+        $user->forceFill([
+            'password' => Hash::make($validated['password']),
+            'remember_token' => Str::random(60),
+        ])->save();
         $this->audit($request, 'staff_password_reset', $user, [], $validated['reason']);
+        $this->forgetDatabaseSessionsFor($user);
 
         return response()->json(['message' => 'Password reset']);
     }
@@ -132,17 +168,25 @@ class AdminPermissionController extends Controller
     public function updateRolePermissions(Request $request, Role $role)
     {
         $validated = $request->validate([
-            'permission_ids' => ['required', 'array'],
-            'permission_ids.*' => ['integer', 'exists:permissions,id'],
+            'permission_ids' => ['required', 'array', 'max:100'],
+            'permission_ids.*' => ['integer', 'distinct', 'exists:permissions,id'],
             'reason' => ['required', 'string', 'max:255'],
         ]);
 
-        $before = $role->permissions()->pluck('permissions.id')->all();
-        $role->permissions()->sync($validated['permission_ids']);
-        $this->audit($request, 'role_permissions_updated', $role, [
-            'before' => $before,
-            'after' => $validated['permission_ids'],
-        ], $validated['reason']);
+        DB::transaction(function () use ($request, $role, $validated) {
+            Permission::query()
+                ->where('name', 'manage_staff_and_permissions')
+                ->lockForUpdate()
+                ->firstOrFail();
+            $role = Role::query()->whereKey($role->id)->lockForUpdate()->firstOrFail();
+            $before = $role->permissions()->pluck('permissions.id')->all();
+            $role->permissions()->sync($validated['permission_ids']);
+            $this->assertActiveManagerRemains();
+            $this->audit($request, 'role_permissions_updated', $role, [
+                'before' => $before,
+                'after' => $validated['permission_ids'],
+            ], $validated['reason']);
+        });
 
         return response()->json($role->load('permissions:id,name,label'));
     }
@@ -158,13 +202,29 @@ class AdminPermissionController extends Controller
             return response()->json(['message' => 'You cannot disable your own account.'], 422);
         }
 
-        $before = $user->is_disabled;
-        $user->is_disabled = $validated['is_disabled'];
-        $user->save();
-        $this->audit($request, 'staff_status_updated', $user, [
-            'before' => $before,
-            'after' => $user->is_disabled,
-        ], $validated['reason']);
+        $user = DB::transaction(function () use ($request, $user, $validated) {
+            Permission::query()
+                ->where('name', 'manage_staff_and_permissions')
+                ->lockForUpdate()
+                ->firstOrFail();
+            $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $before = $user->is_disabled;
+            $user->is_disabled = $validated['is_disabled'];
+            if ($user->is_disabled) {
+                $user->remember_token = Str::random(60);
+            }
+            $user->save();
+            $this->assertActiveManagerRemains();
+            $this->audit($request, 'staff_status_updated', $user, [
+                'before' => $before,
+                'after' => $user->is_disabled,
+            ], $validated['reason']);
+
+            return $user;
+        });
+        if ($user->is_disabled) {
+            $this->forgetDatabaseSessionsFor($user);
+        }
 
         return response()->json([
             'message' => 'User updated',
@@ -202,5 +262,31 @@ class AdminPermissionController extends Controller
             'changes' => $changes,
             'reason' => $reason,
         ]);
+    }
+
+    private function forgetDatabaseSessionsFor(User $user): void
+    {
+        if (config('session.driver') === 'database') {
+            DB::table(config('session.table', 'sessions'))
+                ->where('user_id', $user->id)
+                ->delete();
+        }
+    }
+
+    private function assertActiveManagerRemains(): void
+    {
+        $managerExists = User::query()
+            ->where('is_disabled', false)
+            ->where(function ($query) {
+                $query->whereHas('directPermissions', fn ($permissions) => $permissions->where('name', 'manage_staff_and_permissions'))
+                    ->orWhereHas('roles.permissions', fn ($permissions) => $permissions->where('name', 'manage_staff_and_permissions'));
+            })
+            ->exists();
+
+        if (! $managerExists) {
+            throw ValidationException::withMessages([
+                'permissions' => ['At least one active staff manager must remain.'],
+            ]);
+        }
     }
 }

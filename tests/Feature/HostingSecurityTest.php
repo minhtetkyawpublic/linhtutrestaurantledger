@@ -31,7 +31,7 @@ class HostingSecurityTest extends TestCase
 
         $this->assertNotFalse($contents);
         $this->assertStringContainsString('X-Content-Type-Options "nosniff"', $contents);
-        $this->assertStringContainsString('X-Frame-Options "SAMEORIGIN"', $contents);
+        $this->assertStringContainsString('X-Frame-Options "DENY"', $contents);
         $this->assertStringContainsString('Referrer-Policy "strict-origin-when-cross-origin"', $contents);
         $this->assertStringContainsString('Permissions-Policy', $contents);
     }
@@ -46,6 +46,24 @@ class HostingSecurityTest extends TestCase
 
         $offlinePage = $this->get('/offline.html');
         $offlinePage->assertStatus(200)->assertSee('You are offline');
+    }
+
+    public function test_laravel_responses_include_security_headers_without_apache(): void
+    {
+        config(['app.debug' => false]);
+
+        $response = $this->get('/')
+            ->assertOk()
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('X-Frame-Options', 'DENY')
+            ->assertHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+            ->assertHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+            ->assertHeader('Content-Security-Policy');
+
+        $this->assertStringNotContainsString(
+            "'unsafe-inline'",
+            (string) $response->headers->get('Content-Security-Policy')
+        );
     }
 
     public function test_sensitive_repository_paths_never_return_the_spa_or_file_contents(): void

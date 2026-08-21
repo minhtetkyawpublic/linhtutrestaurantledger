@@ -77,7 +77,7 @@ class LedgerService
                 })
                 ->orderBy('occurred_at')
                 ->orderBy('id')
-                ->get()
+                ->lazy(500)
                 ->each(function (CustomerLedgerEntry $ledgerEntry) use (&$runningBalance) {
                     $runningBalance += (int) $ledgerEntry->amount_kyat;
                     if ((int) $ledgerEntry->balance_after_kyat !== $runningBalance) {

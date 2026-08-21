@@ -10,10 +10,6 @@
         $appBasePath = parse_url(url('/'), PHP_URL_PATH) ?: '/';
         $appBasePath = $appBasePath === '/' ? '' : $appBasePath;
     @endphp
-    <script>
-        window.__APP_BASE_PATH = @json($appBasePath);
-    </script>
-
     <title>{{ config('app.name', 'Lin Htut Restaurant Ledger') }}</title>
     <link rel="manifest" href="{{ asset('manifest.webmanifest') }}">
     <link rel="icon" type="image/png" sizes="48x48" href="{{ asset('icon-48.png') }}">
@@ -23,7 +19,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body>
-    <div id="app-root"></div>
+    <div id="app-root" data-app-base-path="{{ $appBasePath }}"></div>
     <noscript>Enable JavaScript to use this application. ဤအက်ပ်ကို အသုံးပြုရန် JavaScript ဖွင့်ပါ။</noscript>
 </body>
 </html>

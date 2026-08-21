@@ -234,6 +234,7 @@ function LoginScreen({ t, locale, onLocale, onLogin, loading, error }) {
 
 function HomeScreen({ t, permissions, goTo }) {
     const [customerQuery, setCustomerQuery] = useState("");
+    const quickSearchReadyRef = useRef(false);
     const [data, setData] = useState({
         dashboard: null,
         customers: [],
@@ -268,6 +269,32 @@ function HomeScreen({ t, permissions, goTo }) {
             active = false;
         };
     }, [permissions]);
+    useEffect(() => {
+        if (!hasPermission(permissions, "view_customers")) return undefined;
+        if (!quickSearchReadyRef.current) {
+            quickSearchReadyRef.current = true;
+            return undefined;
+        }
+
+        const timer = window.setTimeout(() => {
+            apiClient
+                .get("/customers", {
+                    params: {
+                        q: customerQuery || undefined,
+                        per_page: 10,
+                    },
+                })
+                .then((response) =>
+                    setData((current) => ({
+                        ...current,
+                        customers: response.data.data || [],
+                    })),
+                )
+                .catch(() => {});
+        }, 250);
+
+        return () => window.clearTimeout(timer);
+    }, [customerQuery, permissions]);
     const quickCustomers = useMemo(() => {
         const query = customerQuery.trim().toLocaleLowerCase();
         return data.customers
@@ -391,20 +418,38 @@ function HomeScreen({ t, permissions, goTo }) {
                     </label>
                     {quickCustomers.map((customer) => (
                         <button
-                            className="customer-row"
+                            type="button"
+                            className={`customer-row customer-row-${
+                                Number(customer.current_balance_kyat) > 0
+                                    ? "debt"
+                                    : Number(customer.current_balance_kyat) < 0
+                                      ? "credit"
+                                      : "settled"
+                            }`}
                             key={customer.id}
                             onClick={() => goTo("customers", customer.id)}
                         >
-                            <span>
-                                <strong>{customer.name}</strong>
-                                <small>
-                                    {customer.phone_number || t("no_phone")}
-                                </small>
+                            <span className="customer-identity">
+                                <span
+                                    className="customer-status-dot"
+                                    aria-hidden="true"
+                                />
+                                <span className="customer-copy">
+                                    <strong>{customer.name}</strong>
+                                    <small>
+                                        {customer.phone_number || t("no_phone")}
+                                    </small>
+                                </span>
                             </span>
-                            <Balance
-                                value={customer.current_balance_kyat}
-                                t={t}
-                            />
+                            <span className="row-end">
+                                <Balance
+                                    value={customer.current_balance_kyat}
+                                    t={t}
+                                />
+                                <span className="row-arrow" aria-hidden="true">
+                                    ›
+                                </span>
+                            </span>
                         </button>
                     ))}
                 </section>
@@ -420,9 +465,6 @@ function NewSaleScreen({
     clearPreset,
     online,
 }) {
-    // Receipt generation is intentionally unavailable; completed sales are
-    // reviewed from the dedicated history detail screen.
-    const receipt = () => {};
     const [customers, setCustomers] = useState([]);
     const [curries, setCurries] = useState([]);
     const [customerQuery, setCustomerQuery] = useState("");
@@ -442,11 +484,19 @@ function NewSaleScreen({
         error: "",
         success: "",
     });
+    const initialCustomerIdRef = useRef(presetCustomerId);
+    const customerSearchReadyRef = useRef(false);
     const savingRef = useRef(false);
     const submissionRef = useRef(null);
     const load = useCallback(async () => {
         try {
-            const response = await apiClient.get("/sales/create-options");
+            const response = initialCustomerIdRef.current
+                ? await apiClient.get("/sales/create-options", {
+                      params: {
+                          customer_id: initialCustomerIdRef.current,
+                      },
+                  })
+                : await apiClient.get("/sales/create-options");
             setCustomers(response.data.customers);
             setCurries(response.data.curries);
         } catch (error) {
@@ -462,6 +512,33 @@ function NewSaleScreen({
         load();
     }, [load]);
     useEffect(() => {
+        if (!customerSearchReadyRef.current) {
+            customerSearchReadyRef.current = true;
+            return undefined;
+        }
+
+        const timer = window.setTimeout(async () => {
+            try {
+                const response = await apiClient.get("/sales/create-options", {
+                    params: {
+                        customer_q: customerQuery || undefined,
+                        customer_id: form.customer_id || undefined,
+                        curry_q: curryQuery || undefined,
+                    },
+                });
+                setCustomers(response.data.customers);
+                setCurries(response.data.curries);
+            } catch (requestError) {
+                setStatus((state) => ({
+                    ...state,
+                    error: errorMessage(requestError, t("load_failed")),
+                }));
+            }
+        }, 250);
+
+        return () => window.clearTimeout(timer);
+    }, [customerQuery, curryQuery, form.customer_id, t]);
+    useEffect(() => {
         if (presetCustomerId) {
             setForm((current) => ({
                 ...current,
@@ -476,6 +553,14 @@ function NewSaleScreen({
         0,
     );
     const total = Math.max(0, subtotal - Number(form.discount_kyat || 0));
+    useEffect(() => {
+        if (!form.is_walk_in) return;
+        setForm((current) =>
+            Number(current.paid_kyat) === total
+                ? current
+                : { ...current, paid_kyat: total },
+        );
+    }, [form.is_walk_in, total]);
     const unpaid = total - Number(form.paid_kyat || 0);
     const selectedCustomer = customers.find(
         (customer) => customer.id === Number(form.customer_id),
@@ -520,14 +605,17 @@ function NewSaleScreen({
                     line.id === id
                         ? {
                               ...line,
-                              quantity: Math.max(0, line.quantity + delta),
+                              quantity: Math.min(
+                                  1000,
+                                  Math.max(0, line.quantity + delta),
+                              ),
                           }
                         : line,
                 )
                 .filter((line) => line.quantity > 0),
         );
     const setQuantity = (id, value) => {
-        const nextQuantity = Math.max(1, Number(value || 1));
+        const nextQuantity = Math.min(1000, Math.max(1, Number(value || 1)));
         setItems((current) =>
             current.map((line) =>
                 line.id === id ? { ...line, quantity: nextQuantity } : line,
@@ -734,6 +822,7 @@ function NewSaleScreen({
                                     <input
                                         type="number"
                                         min="1"
+                                        max="1000"
                                         inputMode="numeric"
                                         aria-label={`${t("quantity")} ${line.name}`}
                                         value={line.quantity}
@@ -768,6 +857,7 @@ function NewSaleScreen({
                             type="number"
                             inputMode="numeric"
                             min="0"
+                            max="9000000000000"
                             value={form.discount_kyat}
                             onChange={(event) =>
                                 setForm({
@@ -783,6 +873,8 @@ function NewSaleScreen({
                             type="number"
                             inputMode="numeric"
                             min="0"
+                            max="9000000000000"
+                            disabled={form.is_walk_in}
                             value={form.paid_kyat}
                             onChange={(event) =>
                                 setForm({
@@ -854,90 +946,6 @@ function NewSaleScreen({
                 </div>
                 <Notice kind="error">{status.error}</Notice>
                 <Notice kind="success">{status.success}</Notice>
-                {status.sale && (
-                    <section className="inset-form stack receipt-preview">
-                        <div className="section-heading">
-                            <div>
-                                <p className="eyebrow">{t("receipt")}</p>
-                                <h3>{status.sale.invoice_number}</h3>
-                            </div>
-                            <small>
-                                {new Date(status.sale.sale_at).toLocaleString()}
-                            </small>
-                        </div>
-                        <small>
-                            {t("customer")}:{" "}
-                            {status.sale.customer?.name || t("walkin")}
-                        </small>
-                        <div className="list">
-                            {status.sale.items?.map((item) => (
-                                <div className="list-row" key={item.id}>
-                                    <span>
-                                        <strong>
-                                            {item.curry_name_snapshot}
-                                        </strong>
-                                        <small>
-                                            {t("quantity")}: {item.quantity}
-                                            {" · "}
-                                            {t("unit_price")}:{" "}
-                                            {money(
-                                                item.unit_price_snapshot_kyat,
-                                            )}
-                                        </small>
-                                    </span>
-                                    <strong>
-                                        {money(item.line_total_kyat)}
-                                    </strong>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="totals">
-                            <span>
-                                {t("subtotal")}
-                                <b>{money(status.sale.subtotal_kyat)}</b>
-                            </span>
-                            <span>
-                                {t("discount")}
-                                <b>{money(status.sale.discount_kyat)}</b>
-                            </span>
-                            <span className="grand-total">
-                                {t("total")}
-                                <b>{money(status.sale.total_kyat)}</b>
-                            </span>
-                            <span>
-                                {t("paid_amount")}
-                                <b>{money(status.sale.paid_kyat)}</b>
-                            </span>
-                            <span>
-                                {status.sale.unpaid_kyat < 0
-                                    ? t("customer_credit")
-                                    : t("unpaid")}
-                                <b>
-                                    {money(Math.abs(status.sale.unpaid_kyat))}
-                                </b>
-                            </span>
-                        </div>
-                        {status.sale.note && (
-                            <small>
-                                {t("note")}: {status.sale.note}
-                            </small>
-                        )}
-                        <div className="button-row">
-                            <button
-                                className="secondary"
-                                onClick={() => receipt("share")}
-                            >
-                                {t("share_receipt")}
-                            </button>
-                            <button
-                                className="secondary"
-                                onClick={() => receipt("save")}
-                            >
-                                {t("save_receipt")}
-                            </button>
-                        </div>
-                    </section>
-                )}
                 <div className="sale-save-dock">
                     <span>
                         <small>{t("total")}</small>
@@ -2183,6 +2191,8 @@ function CustomersScreen({
 function HistoryManager({ t, onOpenSale, onOpenCustomer }) {
     const [rows, setRows] = useState([]);
     const [options, setOptions] = useState({ customers: [] });
+    const [customerOptionQuery, setCustomerOptionQuery] = useState("");
+    const customerOptionsReadyRef = useRef(false);
     const [filters, setFilters] = useState({
         range: "today",
         type: "",
@@ -2222,14 +2232,34 @@ function HistoryManager({ t, onOpenSale, onOpenCustomer }) {
         [filters, t],
     );
     useEffect(() => {
-        load(1);
-    }, [load]);
+        if (!showFilters) load(1);
+    }, [load, showFilters]);
     useEffect(() => {
         apiClient
             .get("/histories/filter-options")
             .then((response) => setOptions(response.data))
             .catch(() => {});
     }, []);
+    useEffect(() => {
+        if (!customerOptionsReadyRef.current) {
+            customerOptionsReadyRef.current = true;
+            return undefined;
+        }
+
+        const timer = window.setTimeout(() => {
+            apiClient
+                .get("/histories/filter-options", {
+                    params: {
+                        customer_q: customerOptionQuery || undefined,
+                        customer_id: filters.customer_id || undefined,
+                    },
+                })
+                .then((response) => setOptions(response.data))
+                .catch(() => {});
+        }, 250);
+
+        return () => window.clearTimeout(timer);
+    }, [customerOptionQuery, filters.customer_id]);
     const label = (row) =>
         row.type === "sale"
             ? t("sale")
@@ -2263,7 +2293,6 @@ function HistoryManager({ t, onOpenSale, onOpenCustomer }) {
                         onSubmit={(event) => {
                             event.preventDefault();
                             setShowFilters(false);
-                            load(1);
                         }}
                     >
                         <label>
@@ -2271,10 +2300,13 @@ function HistoryManager({ t, onOpenSale, onOpenCustomer }) {
                             <select
                                 value={filters.range}
                                 onChange={(event) =>
-                                    setFilters({
-                                        ...filters,
+                                    setFilters((current) => ({
+                                        ...current,
                                         range: event.target.value,
-                                    })
+                                        ...(event.target.value !== "custom"
+                                            ? { from: "", to: "" }
+                                            : {}),
+                                    }))
                                 }
                             >
                                 <option value="today">{t("today")}</option>
@@ -2342,6 +2374,16 @@ function HistoryManager({ t, onOpenSale, onOpenCustomer }) {
                             </select>
                         </label>
                         <label>
+                            {t("search_customer")}
+                            <input
+                                type="search"
+                                value={customerOptionQuery}
+                                onChange={(event) =>
+                                    setCustomerOptionQuery(event.target.value)
+                                }
+                            />
+                        </label>
+                        <label>
                             {t("customer")}
                             <select
                                 value={filters.customer_id}
@@ -2373,8 +2415,9 @@ function HistoryManager({ t, onOpenSale, onOpenCustomer }) {
                 <div className="list">
                     {rows.map((row) => (
                         <button
+                            type="button"
                             className="history-row"
-                            key={`${row.type}-${row.id}`}
+                            key={`${row.type}-${row.record_id}`}
                             onClick={() =>
                                 row.type === "sale"
                                     ? onOpenSale(row.record_id)
@@ -2432,6 +2475,13 @@ function SaleDetailScreen({ t, saleId, onBack, permissions, online }) {
         customers: [],
         curries: [],
     });
+    const [editCustomerQuery, setEditCustomerQuery] = useState("");
+    const [editCurryQuery, setEditCurryQuery] = useState("");
+    const editCustomerSearchReadyRef = useRef(false);
+    const editingCustomerId = editing?.customer_id;
+    const editingCurryIds =
+        editing?.items.map((item) => item.curry_item_id).join(",") || "";
+    const isEditing = Boolean(editing);
     const [error, setError] = useState("");
     const load = useCallback(() => {
         return apiClient
@@ -2460,8 +2510,17 @@ function SaleDetailScreen({ t, saleId, onBack, permissions, online }) {
     };
     const beginEdit = async () => {
         try {
-            const response = await apiClient.get("/sales/edit-options");
+            const response = await apiClient.get("/sales/edit-options", {
+                params: {
+                    customer_id: sale.customer_id || undefined,
+                    curry_item_ids: sale.items.map(
+                        (item) => item.curry_item_id,
+                    ),
+                },
+            });
             setEditOptions(response.data);
+            setEditCustomerQuery("");
+            setEditCurryQuery("");
             setEditing({
                 customer_id: sale.customer_id || "",
                 is_walk_in: sale.is_walk_in,
@@ -2479,6 +2538,43 @@ function SaleDetailScreen({ t, saleId, onBack, permissions, online }) {
             setError(errorMessage(requestError, t("load_failed")));
         }
     };
+    useEffect(() => {
+        if (!isEditing) {
+            editCustomerSearchReadyRef.current = false;
+            return undefined;
+        }
+        if (!editCustomerSearchReadyRef.current) {
+            editCustomerSearchReadyRef.current = true;
+            return undefined;
+        }
+
+        const timer = window.setTimeout(async () => {
+            try {
+                const response = await apiClient.get("/sales/edit-options", {
+                    params: {
+                        customer_q: editCustomerQuery || undefined,
+                        customer_id: editingCustomerId || undefined,
+                        curry_q: editCurryQuery || undefined,
+                        curry_item_ids: editingCurryIds
+                            ? editingCurryIds.split(",")
+                            : undefined,
+                    },
+                });
+                setEditOptions(response.data);
+            } catch (requestError) {
+                setError(errorMessage(requestError, t("load_failed")));
+            }
+        }, 250);
+
+        return () => window.clearTimeout(timer);
+    }, [
+        editCustomerQuery,
+        editCurryQuery,
+        editingCustomerId,
+        editingCurryIds,
+        isEditing,
+        t,
+    ]);
     const saveEdit = async (event) => {
         event.preventDefault();
         if (!online) {
@@ -2533,32 +2629,58 @@ function SaleDetailScreen({ t, saleId, onBack, permissions, online }) {
                             {t("walkin")}
                         </label>
                         {!editing.is_walk_in && (
-                            <label>
-                                {t("customer")}
-                                <select
-                                    value={editing.customer_id}
-                                    onChange={(event) =>
-                                        setEditing({
-                                            ...editing,
-                                            customer_id: event.target.value,
-                                        })
-                                    }
-                                    required
-                                >
-                                    <option value="">
-                                        {t("select_customer")}
-                                    </option>
-                                    {editOptions.customers.map((customer) => (
-                                        <option
-                                            key={customer.id}
-                                            value={customer.id}
-                                        >
-                                            {customer.name}
+                            <div className="stack compact-stack">
+                                <label>
+                                    {t("search_customer")}
+                                    <input
+                                        type="search"
+                                        value={editCustomerQuery}
+                                        onChange={(event) =>
+                                            setEditCustomerQuery(
+                                                event.target.value,
+                                            )
+                                        }
+                                    />
+                                </label>
+                                <label>
+                                    {t("customer")}
+                                    <select
+                                        value={editing.customer_id}
+                                        onChange={(event) =>
+                                            setEditing({
+                                                ...editing,
+                                                customer_id: event.target.value,
+                                            })
+                                        }
+                                        required
+                                    >
+                                        <option value="">
+                                            {t("select_customer")}
                                         </option>
-                                    ))}
-                                </select>
-                            </label>
+                                        {editOptions.customers.map(
+                                            (customer) => (
+                                                <option
+                                                    key={customer.id}
+                                                    value={customer.id}
+                                                >
+                                                    {customer.name}
+                                                </option>
+                                            ),
+                                        )}
+                                    </select>
+                                </label>
+                            </div>
                         )}
+                        <label>
+                            {t("search_curries")}
+                            <input
+                                type="search"
+                                value={editCurryQuery}
+                                onChange={(event) =>
+                                    setEditCurryQuery(event.target.value)
+                                }
+                            />
+                        </label>
                         <div className="list">
                             {editing.items.map((item, index) => (
                                 <div className="order-row" key={index}>
@@ -2779,6 +2901,9 @@ function SaleDetailScreen({ t, saleId, onBack, permissions, online }) {
 
 function ReportsScreen({ t }) {
     const [showFilters, setShowFilters] = useState(false);
+    const [customerOptionQuery, setCustomerOptionQuery] = useState("");
+    const [curryOptionQuery, setCurryOptionQuery] = useState("");
+    const reportOptionsReadyRef = useRef(false);
     const [filters, setFilters] = useState({
         range: "today",
         from: "",
@@ -2789,7 +2914,6 @@ function ReportsScreen({ t }) {
     });
     const [options, setOptions] = useState({
         customers: [],
-        categories: [],
         curries: [],
     });
     const [data, setData] = useState({
@@ -2829,8 +2953,38 @@ function ReportsScreen({ t }) {
             .catch((error) => setError(errorMessage(error, t("load_failed"))));
     }, [t]);
     useEffect(() => {
-        load();
-    }, [load]);
+        if (!reportOptionsReadyRef.current) {
+            reportOptionsReadyRef.current = true;
+            return undefined;
+        }
+
+        const timer = window.setTimeout(() => {
+            apiClient
+                .get("/reports/filter-options", {
+                    params: {
+                        customer_q: customerOptionQuery || undefined,
+                        customer_id: filters.customer_id || undefined,
+                        curry_q: curryOptionQuery || undefined,
+                        curry_item_id: filters.curry_item_id || undefined,
+                    },
+                })
+                .then((response) => setOptions(response.data))
+                .catch((error) =>
+                    setError(errorMessage(error, t("load_failed"))),
+                );
+        }, 250);
+
+        return () => window.clearTimeout(timer);
+    }, [
+        customerOptionQuery,
+        curryOptionQuery,
+        filters.customer_id,
+        filters.curry_item_id,
+        t,
+    ]);
+    useEffect(() => {
+        if (!showFilters) load();
+    }, [load, showFilters]);
     const metrics = [
         ["total_sales", "total_sales", "money"],
         ["total_discounts", "total_discounts", "money"],
@@ -2925,6 +3079,18 @@ function ReportsScreen({ t }) {
                                 </>
                             )}
                             <label>
+                                {t("search_customer")}
+                                <input
+                                    type="search"
+                                    value={customerOptionQuery}
+                                    onChange={(event) =>
+                                        setCustomerOptionQuery(
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </label>
+                            <label>
                                 {t("customer")}
                                 <select
                                     value={filters.customer_id}
@@ -2948,6 +3114,16 @@ function ReportsScreen({ t }) {
                                         </option>
                                     ))}
                                 </select>
+                            </label>
+                            <label>
+                                {t("search_curries")}
+                                <input
+                                    type="search"
+                                    value={curryOptionQuery}
+                                    onChange={(event) =>
+                                        setCurryOptionQuery(event.target.value)
+                                    }
+                                />
                             </label>
                             <label>
                                 {t("curry")}
@@ -3068,394 +3244,15 @@ function ReportsScreen({ t }) {
     );
 }
 
-// eslint-disable-next-line no-unused-vars
-function SalesManager({ t, permissions, online }) {
-    const [sales, setSales] = useState([]);
-    const [customers, setCustomers] = useState([]);
-    const [curries, setCurries] = useState([]);
-    const [editing, setEditing] = useState(null);
-    const [error, setError] = useState("");
-    const load = useCallback(async () => {
-        try {
-            const salesResponse = await apiClient.get("/sales");
-            setSales(salesResponse.data);
-            if (hasPermission(permissions, "edit_sale")) {
-                const options = await apiClient.get("/sales/edit-options");
-                setCustomers(options.data.customers);
-                setCurries(options.data.curries);
-            }
-        } catch (error) {
-            setError(errorMessage(error, t("load_failed")));
-        }
-    }, [permissions, t]);
-    useEffect(() => {
-        load();
-    }, [load]);
-    const reverse = async (sale) => {
-        if (!online) {
-            setError(t("offline_warning"));
-            return;
-        }
-        const reason = window.prompt(t("enter_reversal_reason"));
-        if (!reason) return;
-        try {
-            await apiClient.post(`/sales/${sale.id}/reverse`, { reason });
-            load();
-        } catch (error) {
-            setError(errorMessage(error, t("save_failed")));
-        }
-    };
-    const beginEdit = (sale) =>
-        setEditing({
-            id: sale.id,
-            customer_id: sale.customer_id || "",
-            is_walk_in: sale.is_walk_in,
-            sale_at: new Date(sale.sale_at).toISOString().slice(0, 16),
-            discount_kyat: sale.discount_kyat,
-            paid_kyat: sale.paid_kyat,
-            note: sale.note || "",
-            reason: "",
-            items: sale.items.map((item) => ({
-                curry_item_id: item.curry_item_id,
-                quantity: item.quantity,
-            })),
-        });
-    const setItemQuantity = (index, value) =>
-        setEditing((current) => ({
-            ...current,
-            items: current.items.map((item, itemIndex) =>
-                itemIndex === index
-                    ? { ...item, quantity: Math.max(1, Number(value)) }
-                    : item,
-            ),
-        }));
-    const saveEdit = async (event) => {
-        event.preventDefault();
-        if (!online) {
-            setError(t("offline_warning"));
-            return;
-        }
-        setError("");
-        try {
-            await apiClient.put(`/sales/${editing.id}`, {
-                ...editing,
-                customer_id: editing.is_walk_in
-                    ? null
-                    : Number(editing.customer_id),
-                sale_at: new Date(editing.sale_at).toISOString(),
-                discount_kyat: Number(editing.discount_kyat),
-                paid_kyat: Number(editing.paid_kyat),
-                items: editing.items.map((item) => ({
-                    curry_item_id: Number(item.curry_item_id),
-                    quantity: Number(item.quantity),
-                })),
-            });
-            setEditing(null);
-            load();
-        } catch (error) {
-            setError(errorMessage(error, t("save_failed")));
-        }
-    };
-    return (
-        <section className="panel stack">
-            <div className="section-heading">
-                <h2>{t("sales_history")}</h2>
-                <button className="text-button" onClick={load}>
-                    {t("refresh")}
-                </button>
-            </div>
-            <Notice kind="error">{error}</Notice>
-            {editing && (
-                <Modal
-                    title={t("edit_sale")}
-                    onClose={() => setEditing(null)}
-                    wide
-                >
-                    <form className="inset-form stack" onSubmit={saveEdit}>
-                        <label className="check-row">
-                            <input
-                                type="checkbox"
-                                checked={editing.is_walk_in}
-                                onChange={(event) =>
-                                    setEditing({
-                                        ...editing,
-                                        is_walk_in: event.target.checked,
-                                        customer_id: "",
-                                    })
-                                }
-                            />
-                            {t("walkin")}
-                        </label>
-                        {!editing.is_walk_in && (
-                            <label>
-                                {t("customer")}
-                                <select
-                                    value={editing.customer_id}
-                                    onChange={(event) =>
-                                        setEditing({
-                                            ...editing,
-                                            customer_id: event.target.value,
-                                        })
-                                    }
-                                    required
-                                >
-                                    <option value="">
-                                        {t("select_customer")}
-                                    </option>
-                                    {customers.map((customer) => (
-                                        <option
-                                            key={customer.id}
-                                            value={customer.id}
-                                        >
-                                            {customer.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                        )}
-                        <div className="list">
-                            {editing.items.map((item, index) => (
-                                <div
-                                    className="order-row"
-                                    key={`${item.curry_item_id}-${index}`}
-                                >
-                                    <select
-                                        value={item.curry_item_id}
-                                        onChange={(event) =>
-                                            setEditing((current) => ({
-                                                ...current,
-                                                items: current.items.map(
-                                                    (line, itemIndex) =>
-                                                        itemIndex === index
-                                                            ? {
-                                                                  ...line,
-                                                                  curry_item_id:
-                                                                      event
-                                                                          .target
-                                                                          .value,
-                                                              }
-                                                            : line,
-                                                ),
-                                            }))
-                                        }
-                                    >
-                                        {curries.map((curry) => (
-                                            <option
-                                                key={curry.id}
-                                                value={curry.id}
-                                            >
-                                                {curry.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        value={item.quantity}
-                                        onChange={(event) =>
-                                            setItemQuantity(
-                                                index,
-                                                event.target.value,
-                                            )
-                                        }
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                        <div className="two-column">
-                            <label>
-                                {t("discount")}
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={editing.discount_kyat}
-                                    onChange={(event) =>
-                                        setEditing({
-                                            ...editing,
-                                            discount_kyat: event.target.value,
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label>
-                                {t("paid_amount")}
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={editing.paid_kyat}
-                                    onChange={(event) =>
-                                        setEditing({
-                                            ...editing,
-                                            paid_kyat: event.target.value,
-                                        })
-                                    }
-                                />
-                            </label>
-                        </div>
-                        <label>
-                            {t("sale_date_time")}
-                            <input
-                                type="datetime-local"
-                                value={editing.sale_at}
-                                onChange={(event) =>
-                                    setEditing({
-                                        ...editing,
-                                        sale_at: event.target.value,
-                                    })
-                                }
-                            />
-                        </label>
-                        <label>
-                            {t("note")}
-                            <textarea
-                                value={editing.note}
-                                onChange={(event) =>
-                                    setEditing({
-                                        ...editing,
-                                        note: event.target.value,
-                                    })
-                                }
-                            />
-                        </label>
-                        <label>
-                            {t("correction_reason")}
-                            <input
-                                value={editing.reason}
-                                onChange={(event) =>
-                                    setEditing({
-                                        ...editing,
-                                        reason: event.target.value,
-                                    })
-                                }
-                                required
-                            />
-                        </label>
-                        <button className="primary">
-                            {t("save_correction")}
-                        </button>
-                    </form>
-                </Modal>
-            )}
-            {sales.length ? (
-                <div className="list">
-                    {sales.map((sale) => (
-                        <article className="sale-card" key={sale.id}>
-                            <div>
-                                <strong>{sale.invoice_number}</strong>
-                                <small>
-                                    {sale.customer?.name || t("walkin")} ·{" "}
-                                    {new Date(sale.sale_at).toLocaleString()}
-                                </small>
-                                <small>
-                                    {sale.items
-                                        .map(
-                                            (item) =>
-                                                `${item.curry_name_snapshot} × ${item.quantity}`,
-                                        )
-                                        .join(", ")}
-                                </small>
-                            </div>
-                            <div className="align-right">
-                                <strong>{money(sale.total_kyat)}</strong>
-                                <small>
-                                    {t("paid_amount")}: {money(sale.paid_kyat)}
-                                </small>
-                                <div className="button-row">
-                                    {hasPermission(
-                                        permissions,
-                                        "edit_sale",
-                                    ) && (
-                                        <button
-                                            className="secondary compact"
-                                            onClick={() => beginEdit(sale)}
-                                        >
-                                            {t("edit")}
-                                        </button>
-                                    )}
-                                    {hasPermission(
-                                        permissions,
-                                        "delete_reverse_sale",
-                                    ) && (
-                                        <button
-                                            className="danger compact"
-                                            onClick={() => reverse(sale)}
-                                        >
-                                            {t("reverse")}
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                            <details className="sale-details">
-                                <summary>{t("sale_details")}</summary>
-                                <div className="stack compact-stack">
-                                    {sale.items.map((item) => (
-                                        <div className="list-row" key={item.id}>
-                                            <span>
-                                                <strong>
-                                                    {item.curry_name_snapshot}
-                                                </strong>
-                                                <small>
-                                                    {t("quantity")}:{" "}
-                                                    {item.quantity}
-                                                    {" · "}
-                                                    {t("unit_price")}:{" "}
-                                                    {money(
-                                                        item.unit_price_snapshot_kyat,
-                                                    )}
-                                                </small>
-                                            </span>
-                                            <strong>
-                                                {money(item.line_total_kyat)}
-                                            </strong>
-                                        </div>
-                                    ))}
-                                    <small>
-                                        {t("subtotal")}:{" "}
-                                        {money(sale.subtotal_kyat)}
-                                    </small>
-                                    <small>
-                                        {t("discount")}:{" "}
-                                        {money(sale.discount_kyat)}
-                                    </small>
-                                    <small>
-                                        {t("paid_amount")}:{" "}
-                                        {money(sale.paid_kyat)}
-                                    </small>
-                                    <small>
-                                        {sale.unpaid_kyat < 0
-                                            ? t("customer_credit")
-                                            : t("unpaid")}
-                                        : {money(Math.abs(sale.unpaid_kyat))}
-                                    </small>
-                                    <small>
-                                        {t("note")}: {sale.note || "—"}
-                                    </small>
-                                </div>
-                            </details>
-                        </article>
-                    ))}
-                </div>
-            ) : (
-                <Empty t={t} />
-            )}
-        </section>
-    );
-}
-
 function CurryManager({ t }) {
-    const categories = [];
     const [items, setItems] = useState([]);
-    const [showCategoryForm, setShowCategoryForm] = useState(false);
-    const [showItemForm, setShowItemForm] = useState(false);
-    const emptyCategoryForm = {
-        id: null,
-        name: "",
-        display_order: 0,
-        is_active: true,
-    };
-    const [categoryForm, setCategoryForm] = useState({
-        ...emptyCategoryForm,
+    const [query, setQuery] = useState("");
+    const [page, setPage] = useState({
+        current_page: 1,
+        last_page: 1,
+        total: 0,
     });
+    const [showItemForm, setShowItemForm] = useState(false);
     const emptyForm = {
         id: null,
         name: "",
@@ -3466,43 +3263,33 @@ function CurryManager({ t }) {
     const [form, setForm] = useState({ ...emptyForm });
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
-    const load = useCallback(async () => {
-        try {
-            const itemsResponse = await apiClient.get("/curry-items");
-            setItems(itemsResponse.data);
-        } catch (error) {
-            setError(errorMessage(error, t("load_failed")));
-        }
-    }, [t]);
-    useEffect(() => {
-        load();
-    }, [load]);
-    const saveCategory = async (event) => {
-        event.preventDefault();
-        setError("");
-        setSuccess("");
-        try {
-            const payload = {
-                name: categoryForm.name,
-                display_order: Number(categoryForm.display_order || 0),
-                is_active: categoryForm.is_active,
-            };
-            if (categoryForm.id) {
-                await apiClient.put(
-                    `/curry-categories/${categoryForm.id}`,
-                    payload,
-                );
-            } else {
-                await apiClient.post("/curry-categories", payload);
+    const load = useCallback(
+        async (nextPage = 1) => {
+            try {
+                const itemsResponse = await apiClient.get("/curry-items", {
+                    params: {
+                        q: query || undefined,
+                        page: nextPage,
+                        per_page: 25,
+                    },
+                });
+                setItems(itemsResponse.data.data || []);
+                setPage({
+                    current_page: itemsResponse.data.current_page || 1,
+                    last_page: itemsResponse.data.last_page || 1,
+                    total: itemsResponse.data.total || 0,
+                });
+            } catch (error) {
+                setError(errorMessage(error, t("load_failed")));
             }
-            setCategoryForm({ ...emptyCategoryForm });
-            setShowCategoryForm(false);
-            await load();
-            setSuccess(t("changes_saved"));
-        } catch (error) {
-            setError(errorMessage(error, t("save_failed")));
-        }
-    };
+        },
+        [query, t],
+    );
+    useEffect(() => {
+        const timer = window.setTimeout(() => load(1), 250);
+
+        return () => window.clearTimeout(timer);
+    }, [load]);
     const saveItem = async (event) => {
         event.preventDefault();
         setError("");
@@ -3564,97 +3351,15 @@ function CurryManager({ t }) {
             </div>
             <Notice kind="error">{error}</Notice>
             <Notice kind="success">{success}</Notice>
+            <label>
+                {t("search_curries")}
+                <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                />
+            </label>
             <div className="management-grid">
-                {showCategoryForm && (
-                    <Modal
-                        title={
-                            categoryForm.id
-                                ? t("edit_category")
-                                : t("new_category")
-                        }
-                        onClose={() => setShowCategoryForm(false)}
-                    >
-                        <form
-                            className="inset-form stack"
-                            onSubmit={saveCategory}
-                        >
-                            <label>
-                                {t("category_name")}
-                                <input
-                                    value={categoryForm.name}
-                                    onChange={(event) =>
-                                        setCategoryForm({
-                                            ...categoryForm,
-                                            name: event.target.value,
-                                        })
-                                    }
-                                    required
-                                />
-                            </label>
-                            <label>
-                                {t("display_order")}
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={categoryForm.display_order}
-                                    onChange={(event) =>
-                                        setCategoryForm({
-                                            ...categoryForm,
-                                            display_order: event.target.value,
-                                        })
-                                    }
-                                />
-                            </label>
-                            <label className="check-row">
-                                <input
-                                    type="checkbox"
-                                    checked={categoryForm.is_active}
-                                    onChange={(event) =>
-                                        setCategoryForm({
-                                            ...categoryForm,
-                                            is_active: event.target.checked,
-                                        })
-                                    }
-                                />
-                                {t("active")}
-                            </label>
-                            <button className="secondary">{t("save")}</button>
-                            <div className="list">
-                                {categories.map((category) => (
-                                    <div className="list-row" key={category.id}>
-                                        <div>
-                                            <strong>{category.name}</strong>
-                                            <small>
-                                                {category.is_active
-                                                    ? t("active")
-                                                    : t("inactive")}{" "}
-                                                · #{category.display_order}
-                                            </small>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            className="text-button"
-                                            onClick={() => {
-                                                setCategoryForm({
-                                                    id: category.id,
-                                                    name: category.name,
-                                                    display_order:
-                                                        category.display_order ||
-                                                        0,
-                                                    is_active:
-                                                        category.is_active,
-                                                });
-                                                setShowCategoryForm(true);
-                                            }}
-                                        >
-                                            {t("edit")}
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </form>
-                    </Modal>
-                )}
                 {showItemForm && (
                     <Modal
                         title={form.id ? t("edit_curry") : t("new_curry")}
@@ -3762,12 +3467,41 @@ function CurryManager({ t }) {
                     </div>
                 ))}
             </div>
+            {page.last_page > 1 && (
+                <div className="pagination-row">
+                    <button
+                        type="button"
+                        className="secondary compact"
+                        disabled={page.current_page <= 1}
+                        onClick={() => load(page.current_page - 1)}
+                    >
+                        ‹
+                    </button>
+                    <span>
+                        {page.current_page} / {page.last_page} · {page.total}
+                    </span>
+                    <button
+                        type="button"
+                        className="secondary compact"
+                        disabled={page.current_page >= page.last_page}
+                        onClick={() => load(page.current_page + 1)}
+                    >
+                        ›
+                    </button>
+                </div>
+            )}
         </section>
     );
 }
 
 function StaffManager({ t }) {
     const [staff, setStaff] = useState([]);
+    const [staffQuery, setStaffQuery] = useState("");
+    const [page, setPage] = useState({
+        current_page: 1,
+        last_page: 1,
+        total: 0,
+    });
     const [roles, setRoles] = useState([]);
     const [permissions, setPermissions] = useState([]);
     const [error, setError] = useState("");
@@ -3782,23 +3516,41 @@ function StaffManager({ t }) {
         permission_ids: [],
     };
     const [form, setForm] = useState(null);
-    const load = useCallback(async () => {
-        try {
-            const [staffResponse, rolesResponse, permissionsResponse] =
-                await Promise.all([
-                    apiClient.get("/admin/staff"),
-                    apiClient.get("/admin/roles"),
-                    apiClient.get("/admin/permissions"),
-                ]);
-            setStaff(staffResponse.data);
-            setRoles(rolesResponse.data);
-            setPermissions(permissionsResponse.data);
-        } catch (error) {
-            setError(errorMessage(error, t("load_failed")));
-        }
-    }, [t]);
+    const load = useCallback(
+        async (nextPage = 1) => {
+            try {
+                const [staffResponse, rolesResponse, permissionsResponse] =
+                    await Promise.all([
+                        apiClient.get("/admin/staff", {
+                            params: {
+                                q: staffQuery || undefined,
+                                page: nextPage,
+                                per_page: 25,
+                            },
+                        }),
+                        apiClient.get("/admin/roles"),
+                        apiClient.get("/admin/permissions"),
+                    ]);
+                const staffData = Array.isArray(staffResponse.data)
+                    ? staffResponse.data
+                    : staffResponse.data.data || [];
+                setStaff(staffData);
+                setPage({
+                    current_page: staffResponse.data.current_page || 1,
+                    last_page: staffResponse.data.last_page || 1,
+                    total: staffResponse.data.total ?? staffData.length,
+                });
+                setRoles(rolesResponse.data);
+                setPermissions(permissionsResponse.data);
+            } catch (error) {
+                setError(errorMessage(error, t("load_failed")));
+            }
+        },
+        [staffQuery, t],
+    );
     useEffect(() => {
-        load();
+        const timer = window.setTimeout(() => load(1), 250);
+        return () => window.clearTimeout(timer);
     }, [load]);
     const toggle = async (user) => {
         const reason = window.prompt(t("enter_change_reason"));
@@ -3810,7 +3562,7 @@ function StaffManager({ t }) {
                 is_disabled: !user.is_disabled,
                 reason,
             });
-            await load();
+            await load(page.current_page);
             setSuccess(t("changes_saved"));
         } catch (error) {
             setError(errorMessage(error, t("save_failed")));
@@ -3869,7 +3621,7 @@ function StaffManager({ t }) {
                 });
             }
             setForm(null);
-            await load();
+            await load(page.current_page);
             setSuccess(t("changes_saved"));
         } catch (error) {
             setError(errorMessage(error, t("save_failed")));
@@ -3880,7 +3632,10 @@ function StaffManager({ t }) {
             <div className="section-heading">
                 <h2>{t("staff_accounts")}</h2>
                 <div className="button-row">
-                    <button className="text-button" onClick={load}>
+                    <button
+                        className="text-button"
+                        onClick={() => load(page.current_page)}
+                    >
                         {t("refresh")}
                     </button>
                     <button
@@ -3893,6 +3648,15 @@ function StaffManager({ t }) {
             </div>
             <Notice kind="error">{error}</Notice>
             <Notice kind="success">{success}</Notice>
+            <label>
+                {t("search_staff")}
+                <input
+                    type="search"
+                    value={staffQuery}
+                    placeholder={t("search_staff_placeholder")}
+                    onChange={(event) => setStaffQuery(event.target.value)}
+                />
+            </label>
             {form && (
                 <Modal
                     title={form.id ? t("edit_staff") : t("new_staff")}
@@ -3937,7 +3701,7 @@ function StaffManager({ t }) {
                                 <input
                                     type="password"
                                     value={form.password}
-                                    minLength="8"
+                                    minLength="12"
                                     onChange={(event) =>
                                         setForm({
                                             ...form,
@@ -4059,6 +3823,27 @@ function StaffManager({ t }) {
                     </div>
                 ))}
             </div>
+            {page.last_page > 1 && (
+                <div className="pagination-row">
+                    <button
+                        className="secondary compact"
+                        disabled={page.current_page <= 1}
+                        onClick={() => load(page.current_page - 1)}
+                    >
+                        â€¹
+                    </button>
+                    <span>
+                        {page.current_page} / {page.last_page} · {page.total}
+                    </span>
+                    <button
+                        className="secondary compact"
+                        disabled={page.current_page >= page.last_page}
+                        onClick={() => load(page.current_page + 1)}
+                    >
+                        â€º
+                    </button>
+                </div>
+            )}
         </section>
     );
 }

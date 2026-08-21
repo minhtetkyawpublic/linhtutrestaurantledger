@@ -16,6 +16,13 @@ class CustomerController extends Controller
 {
     public function ledger(Customer $customer, Request $request)
     {
+        $request->validate([
+            'event_type' => ['nullable', 'string', 'max:60'],
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
         $perPage = min(50, max(5, $request->integer('per_page', 20)));
 
         return $this->buildLedgerQuery($customer, $request)
@@ -35,6 +42,7 @@ class CustomerController extends Controller
     {
         $request->validate([
             'q' => ['nullable', 'string', 'max:100'],
+            'include_archived' => ['nullable', 'boolean'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
@@ -451,7 +459,7 @@ class CustomerController extends Controller
 
         if ((filled($fromInput) && ! filled($toInput)) || (! filled($fromInput) && filled($toInput))) {
             throw ValidationException::withMessages([
-                'date_range' => ['Both from and to are required for custom statement range filtering.'],
+                'date_range' => ['Both from and to are required for custom ledger range filtering.'],
             ]);
         }
 

@@ -1,5 +1,8 @@
 # Phase 3 — Curry and customer setup (implemented and verified)
 
+> Superseded in part: curry categories were later removed. Current curry items
+> have name, price, display order, availability, and archive state only.
+
 Reference:
 - `DEVELOPMENT_ROADMAP.md` Section 10 (Phase 3)
 

@@ -1,168 +1,117 @@
-# Phase-by-phase implementation audit
+# Current implementation audit
 
 Audit target: `C:\xampp\htdocs\linhtutrestaurant`
 
-This record distinguishes repository implementation from checks that require a
-real phone or an authorized Hostinger target. Passing a narrow automated check
-is not used as proof of an unrelated manual requirement.
+This is the current-state record. The latest owner decisions override older
+phase drafts: curry categories, receipt PDFs, statement PDFs, file sharing, and
+receipt previews are intentionally removed.
 
-## Phase 0 — terminology and design
+## Product workflows
 
-Status: repository requirements implemented.
+- Session login/logout, disabled-account enforcement, CSRF protection, login
+  throttling, per-route permissions, and no public registration.
+- Staff, roles, direct permissions, password resets, account disable/enable,
+  and database-paginated audit history.
+- Curry create/edit/reprice/reorder/availability/archive. The management list
+  is searchable and database-paginated; sale selectors use bounded server-side
+  search.
+- Customer create/search/edit/archive and reasoned opening balances. The list
+  is database-paginated and customer details open on a dedicated route.
+- Customer payments, money given to customers, corrections, reversals, and
+  chronological ledger balances. The ledger is database-paginated.
+- Named-customer and fully-paid walk-in sales, server-side price snapshots,
+  discounts, partial payment, overpayment credit, correction, and reversal.
+- Unified History list for sales, customer payments, and money given. It
+  defaults to today, supports date/type/customer filters, is database-paginated,
+  and links sales to a dedicated details page.
+- Reports use SQL aggregates for sales, customer balances, payments, money
+  given, and top curries. Reversed financial entries do not inflate totals;
+  separate reversed-item report cards are intentionally absent.
+- English and Myanmar UI maps have exact key parity; user-entered names and
+  notes are never translated.
+- Install manifest, full uncropped owner-provided icon, service worker, offline
+  fallback, online/offline state, and root/nested deployment path support.
 
-- Canonical phone wireframes and acceptance criteria:
-  `phase-0-wireframes-and-acceptance.md`.
-- Complete English/Myanmar UI keys are centralized in
-  `resources/js/i18n/translations.js`.
-- `npm run translations:check` proves exact key parity, non-empty values, and
-  prevents English fallback values in the Myanmar map.
-- Final preferred Burmese tone remains an owner wording decision, as intended
-  by the roadmap.
+## Record and calculation integrity
 
-## Phase 1 — foundation
+- Sales, items, ledger entries, and audit records are transaction-wrapped.
+- Sale and money-action idempotency keys reject reuse with changed payloads.
+- Customer rows are locked while their ledger changes.
+- Corrections append reversal/replacement entries rather than rewriting money
+  history.
+- Backdated entries recalculate the chronological tail in constant application
+  memory; same-time entries are ordered by ID.
+- Financial database columns use BIGINT. Request limits, item-count limits,
+  quantity limits, and subtotal limits keep calculations inside supported
+  integer and browser-safe ranges.
+- Curry price/name snapshots preserve historical sales after menu edits.
+- Invoice identifiers include millisecond time plus randomness and remain
+  database-unique.
 
-Status: implemented and automated locally.
+## Long-term performance
 
-- One Laravel 12 + React/Vite application using the C: XAMPP MariaDB/MySQL
-  server locally and a dedicated MySQL configuration template for production.
-- PHP requirement is `^8.2`; timezone is `Asia/Yangon`.
-- Session authentication, CSRF-protected mutations, runtime API path helper,
-  root/nested SPA tests, global API errors, and permission-aware navigation.
-- Install manifest, valid 192/512 icons, service worker with API bypass,
-  static offline fallback, online/offline state, save blocking while offline,
-  update-ready prompt, and History API routes that survive direct refreshes.
-- The app displays the complete `linhtuticon.jpg`, and favicon/Apple/maskable
-  variants preserve the full artwork without cropping;
-  compact phone views use centered fade-in modals rather than bottom sheets,
-  with secondary report content collapsed by default.
-- Authentication refreshes the SPA CSRF token after Laravel regenerates the
-  session, so protected buttons continue working immediately after login.
-- Blade includes the React refresh preamble before Vite scripts; both live Vite
-  development mode and compiled production mode are browser-tested.
-- Direct SPA routes are permission guarded, and Settings always exposes
-  language and logout controls.
-- Evidence: `npm run runtime:paths:test`, `RoutingTest`,
-  `ServiceWorkerSecurityTest`, and live authenticated HTTP checks.
+- Customers, curries, histories, customer ledgers, and audit records paginate
+  in SQL; no growing transaction list is loaded in one response.
+- Sale/report/history selectors return at most 50 matches and search on the
+  server while retaining the selected record.
+- Dashboard and report balances use grouped aggregate queries instead of one
+  query per customer.
+- Sale creation loads all selected curry records in one query.
+- History/report indexes cover sale date, ledger event/date, and audit
+  action/order access patterns.
+- Recent dashboard activity is intentionally capped at five and report ranking
+  lists at ten.
 
-## Phase 2 — accounts and permissions
+## Security and failure handling
 
-Status: implemented and feature-tested.
+- Authenticated mutation routes are CSRF protected and independently
+  permission-gated.
+- Passwords created/reset by administrators require at least 12 characters,
+  mixed case, numbers, and symbols. Email addresses are normalized.
+- Password reset and account disabling revoke database-backed sessions for the
+  target user.
+- Sessions are encrypted, HTTP-only, SameSite=Lax, and default to 12 hours;
+  production must set secure cookies over HTTPS.
+- Laravel emits nosniff, anti-framing, referrer, permissions, and production
+  content-security headers even without Apache header configuration.
+- Sensitive repository paths are denied, API requests bypass the service-worker
+  cache, offline writes are blocked in the UI, and production debug mode must
+  remain disabled.
+- Date ranges, pagination limits, IDs, text lengths, dates, money values, and
+  future/backdated financial actions are validated server-side.
 
-- Login/logout, disabled-account enforcement, no public registration.
-- Admin/cashier/viewer templates plus exact per-user permission customization.
-- Staff create/edit, hidden password reset, enable/disable, role-permission API,
-  audit history, and independently protected API routes.
-- Production seeding never creates or resets a known-password administrator.
-  `php artisan app:create-admin` uses hidden interactive password input.
-- Evidence: `AuthPermissionsTest`, `AdminBootstrapTest`, and
-  `PermissionAndReadinessTest`.
+## Automated evidence (2026-08-21)
 
-## Phase 3 — curry and customer setup
+- `npm run lint`: pass.
+- `npm run test:ui`: 19 tests pass.
+- `php artisan test --compact`: 74 tests / 446 assertions pass using the
+  available PHP 8.2 runtime.
+- `php vendor/bin/phpunit --configuration=phpunit.mysql.xml`: 74 tests / 446
+  assertions pass against the disposable MySQL database.
+- `npm run build:verify`: pass, including lint, formatting, 19 UI tests,
+  translation parity, root/nested path tests, production build, service worker,
+  and Hostinger readiness verification.
 
-Status: implemented and feature-tested.
+The tests cover permissions, login/CSRF, disabled accounts, security headers,
+pagination, bounded selectors, N+1 query regressions, idempotency conflicts,
+backdating, corrections, reversals, report calculations, route safety,
+localization, PWA behavior, and root/nested builds.
 
-- Category and curry create/update/reprice/reorder/availability/archive.
-- Customer create/search/edit/archive, opening-balance reason and ledger entry.
-- Curry read access is available to authenticated create-sale staff without
-  granting menu-management permission.
-- User-entered values are stored without translation.
-- Evidence: `CurryCustomerTest` and historical snapshot acceptance test.
+## External/manual evidence still required
 
-## Phase 4 — sales and ledger
+- The in-app browser was unavailable during this audit session, so a fresh
+  rendered mobile walkthrough still needs to be captured when that browser is
+  available. Repository Chrome scripts remain available for local execution.
+- Physical Android install and iOS Add to Home Screen.
+- Final Burmese wording review by the owner.
+- Authorized Hostinger deployment, backup/restore proof, HTTPS cookie check,
+  and production concurrency/load measurements.
 
-Status: implemented and feature-tested.
+## C: runtime constraint
 
-- Customer-first and explicit fully-paid walk-in flows.
-- Server-captured item prices; sale discount; full/partial/unpaid/overpayment.
-- Atomic sale/items/ledger work; opening-balance/customer updates are also
-  transaction-wrapped.
-- Customer payments, money given/lent, chronological running balance,
-  append-only payment/loan correction and reversal with reasons, audit records,
-  and preserved before/after
-  sale item snapshots.
-- Database idempotency for sales and customer-money actions plus customer-row
-  locking, unique ledger-reversal protection, cross-action idempotency-key
-  conflict rejection, and chronological recalculation for backdated entries.
-- Evidence: `SalesLedgerTest`.
-
-## Phase 5 — sharing and reports
-
-Status: implemented and feature-tested.
-
-- Localized receipt and customer statement PDFs with automatic pagination and
-  an embedded Padauk font for Myanmar text.
-- Native Web Share files when supported, normal download fallback otherwise.
-- Statement date filter and report filters for preset/custom range, customer,
-  curry/category, and payment status.
-- Archived customers/curries and inactive categories remain available as
-  historical report filters; reversed sales remain visible in sale history.
-- Sales/debt/payment/money-lent/balance/top-curry/reversal metrics; reversed
-  customer-money entries no longer inflate totals, and overpayments use the
-  plain-language `Customer credit` label rather than negative unpaid values.
-- Evidence: `ReportsAndSharingTest`.
-
-## Phase 6 — quality and PWA verification
-
-Status: automated repository gates pass; physical-device checks pending.
-
-Automated:
-
-- `npm run lint`
-- `npm run translations:check`
-- `npm run runtime:paths:test`
-- `npm run hostinger:verify`
-- `npm run test:ui` (19 tests covering login/localization, authenticated home,
-  permission routes, settings, duplicate-submit locks, ledger corrections and
-  backdating, balance refresh, saved-sale detail, and connection recovery)
-- `npm run test:browser:dev` with live Vite: React refresh preamble and CSS
-- `npm run test:layout:dev` with a 390 x 844 Chrome viewport: compact report
-  layout, no horizontal overflow, branded icon, and centered non-sheet modal
-- `npm run test:browser` in installed Chrome at 390 x 844: production CSS,
-  login, direct `/reports` refresh, English/Myanmar layouts, logout/re-login,
-  console errors, horizontal overflow, and service-worker offline fallback
-- `npm run build`
-- `php artisan test` (63 tests, 405 assertions)
-- MariaDB profile (63 tests, 405 assertions against the disposable C: XAMPP
-  `linhtutrestaurant_test` database)
-- migration status and sensitive-route tests
-
-Still requiring external/manual evidence:
-
-- Android installation on a real target device.
-- iOS Add to Home Screen on a real target device.
-- Native PDF share sheet on the owner's phone/browser.
-- Final narrow-screen Burmese wording review by the owner.
-- Production-MySQL stress/load test under expected concurrent traffic.
-
-## Phase 7 — Hostinger preparation and deployment
-
-Status: repository preparation implemented; deployment is not authorized or
-verifiable without production facts.
-
-- Compiled `public/build`, nested runtime paths, root/public `.htaccess`, root
-  front controller, production environment example, sensitive-route denial,
-  PWA assets, and readiness verifier are present.
-- `DEPLOYMENT_RECORD.md` records the exact missing production facts and backup
-  evidence.
-- This directory is not currently a Git worktree, so a commit SHA and tracked
-  build cannot yet be proven.
-- No claim of Hostinger deployment success is made.
-
-## Phase 8 — localization and finalization
-
-Status: technical localization implemented; owner wording review pending.
-
-- Complete UI translation maps with exact English/Myanmar key parity and no
-  silent English-value fallback.
-- Locale persists locally and in the authenticated user profile.
-- Permission/role labels, browser errors, receipt labels, statement labels,
-  and statement event names follow the selected locale.
-- User-entered curry/customer/note content remains unchanged.
-- Owner may revise Burmese strings without application-logic changes.
-
-## Current local runtime constraint
-
-The project and MySQL server/data are on C:, but `C:\xampp\php\php.exe` is PHP
-8.0.30 while Laravel 12 requires PHP 8.2+. A strictly C:-only runtime requires
-upgrading the PHP bundled with C: XAMPP. No project or database path points to
-the old D: project tree.
+The project and intended XAMPP installation are on `C:`. At audit time,
+`C:\xampp\php\php.exe` reports PHP 8.0.30, while Laravel 12 requires PHP 8.2+.
+The audit used an official portable PHP 8.2.33 runtime inside ignored
+`storage/app/test-runtime/` and the current local port 8000 server uses that C:
+runtime. Upgrade the bundled C: XAMPP PHP before treating the normal XAMPP setup
+as complete. Do not use or modify the old D: XAMPP projects.

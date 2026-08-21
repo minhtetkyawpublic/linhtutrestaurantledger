@@ -20,7 +20,6 @@ Route::get('/health', function (Request $request) {
             'ok' => false,
             'app' => config('app.name'),
             'timezone' => config('app.timezone'),
-            'database' => config('database.default'),
             'database_ok' => false,
             'path' => $request->path(),
         ], 503);
@@ -30,7 +29,6 @@ Route::get('/health', function (Request $request) {
         'ok' => true,
         'app' => config('app.name'),
         'timezone' => config('app.timezone'),
-        'database' => config('database.default'),
         'database_ok' => true,
         'path' => $request->path(),
     ]);
@@ -64,11 +62,8 @@ Route::middleware('web')->group(function () {
                 ->middleware('permission:view_audit_history');
         });
 
-        // Every authenticated staff member may read the current menu so that
-        // create-sale users do not also need menu-management permission.
-        Route::get('/curry-items', [CurryItemController::class, 'index']);
-
         Route::middleware('permission:manage_curry_items')->group(function () {
+            Route::get('/curry-items', [CurryItemController::class, 'index']);
             Route::post('/curry-items', [CurryItemController::class, 'store']);
             Route::put('/curry-items/{curry_item}', [CurryItemController::class, 'update']);
             Route::post('/curry-items/{curry_item}/archive', [CurryItemController::class, 'archive']);
@@ -100,7 +95,6 @@ Route::middleware('web')->group(function () {
         });
 
         Route::middleware('permission:view_sales_history')->group(function () {
-            Route::get('/sales', [SaleController::class, 'index']);
             Route::get('/histories', [HistoryController::class, 'index']);
             Route::get('/histories/filter-options', [HistoryController::class, 'filterOptions']);
             Route::get('/histories/sales/{sale}', [HistoryController::class, 'sale']);

@@ -10,12 +10,18 @@ PHP 8.2+ with PDO and PDO MySQL is required.
 
 This repository follows the roadmap in `reference_docs/DEVELOPMENT_ROADMAP.md` and the Hostinger deployment checklist in `reference_docs/GENERIC_HOSTINGER_LARAVEL_REACT_AI_PROMPT.md`.
 
-Current status: **Phases 0–5 and the repository work for Phase 8 are implemented. Phase 6 automated gates pass; physical Android/iOS installation and native-share checks still require real phones. Phase 7 production deployment remains pending until the owner supplies the final Hostinger URL/layout/database facts and authorizes deployment. Final Burmese tone remains owner-reviewable.**
+Current status: **The local application workflows are implemented and covered by
+automated frontend, SQLite, and MySQL tests. Production deployment and physical
+Android/iOS installation remain external steps. The latest owner decisions
+supersede older roadmap drafts: curry categories and receipt/statement PDF
+sharing are intentionally not part of the product.**
 
 Implemented in this codebase:
 
 - Phase 1 foundations: single Laravel + React/Vite app with runtime-derived base path helpers for nested folders.
-- Functional phone-first screens for sales, customers, curry management, ledger actions, reports, PDF sharing, staff/permission management, and audit history.
+- Functional phone-first screens for sales, unified histories, customer details
+  and ledger actions, curry management, reports, staff/permission management,
+  and paginated audit history.
 - Compact phone layouts with centered fade-in modals for secondary forms and
   filters, capped long pickers, and collapsed low-priority report sections.
 - The complete, uncropped `linhtuticon.jpg` is displayed in the app; installable
@@ -30,10 +36,9 @@ Implemented in this codebase:
   - `/.htaccess`
   - `index.php` at repository root
 - Production environment starter (`.env.production.example`) aligned to Hostinger workflow.
-- Complete browser and PDF localization:
+- Complete browser localization:
   - explicit Burmese/English UI maps with untranslated-value detection
-  - localized permissions, roles, errors, receipt/statement labels and events
-  - TCPDF pagination with embedded OFL-licensed Padauk Myanmar font.
+  - localized permissions, roles, errors, financial events, and reports
 - Phase 0 wireframes and acceptance criteria drafted in:
   - `reference_docs/phase-0-wireframes-and-acceptance.md`
 - Phase 1 foundation checklist and acceptance evidence added in:
@@ -68,7 +73,7 @@ php artisan test
 ```
 
 - Full MariaDB/MySQL test profile (after creating the disposable
-  `linhtutrestaurant_test` database as documented in `LOCAL_TEST_COMMANDS.txt`):
+  `linhtutrestaurant_test` database as documented in `LOCAL_TEST_COMMANDS.md`):
 
 ```bash
 php vendor/bin/phpunit --configuration=phpunit.mysql.xml
@@ -92,8 +97,7 @@ When deploying to shared hosting (project kept in `public_html/<folder>`), keep:
   - `SESSION_PATH=/<folder>/`
   - `SESSION_SECURE_COOKIE=true`
 - `public/build/` tracked in git for PHP-only runtime.
-- `storage/framework/cache/` writable so TCPDF can cache its generated font
-  definition on first PDF request.
+- Laravel `storage/` and `bootstrap/cache/` writable by the hosting account.
 - Route and runtime base paths remain folder-aware for PWA manifest/service worker/API calls.
 - Seed roles/permissions, then create the first production administrator without exposing a password in shell history:
 

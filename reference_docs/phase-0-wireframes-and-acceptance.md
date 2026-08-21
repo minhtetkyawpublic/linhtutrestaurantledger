@@ -1,5 +1,9 @@
 # Phase 0 — Confirm terminology and design
 
+> Historical wireframe. Later owner decisions remove curry categories,
+> receipt/statement PDFs, sharing, and receipt previews. See
+> `IMPLEMENTATION_AUDIT.md` for current acceptance evidence.
+
 This document captures the first milestone from `DEVELOPMENT_ROADMAP.md` for this repository.
 
 ## 0.1 Burmese terminology baseline

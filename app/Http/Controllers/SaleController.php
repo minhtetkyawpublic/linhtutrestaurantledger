@@ -16,45 +16,24 @@ use Illuminate\Validation\ValidationException;
 
 class SaleController extends Controller
 {
-    public function createOptions()
+    public function createOptions(Request $request)
     {
+        $customers = $this->customerOptions($request, activeOnly: true);
+
         return response()->json([
-            'customers' => Customer::query()
-                ->withSum('ledgerEntries as ledger_balance', 'amount_kyat')
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get(['id', 'name', 'phone_number']),
-            'curries' => CurryItem::query()
-                ->where('is_available', true)
-                ->where('is_archived', false)
-                ->orderBy('display_order')
-                ->orderBy('name')
-                ->get(),
+            'customers' => $customers,
+            'curries' => $this->curryOptions($request, availableOnly: true),
         ]);
     }
 
-    public function editOptions()
+    public function editOptions(Request $request)
     {
-        return response()->json([
-            'customers' => Customer::query()
-                ->withSum('ledgerEntries as ledger_balance', 'amount_kyat')
-                ->orderBy('name')
-                ->get(['id', 'name', 'phone_number', 'is_active', 'is_archived']),
-            'curries' => CurryItem::query()
-                ->orderBy('display_order')
-                ->orderBy('name')
-                ->get(),
-        ]);
-    }
+        $customers = $this->customerOptions($request, activeOnly: false);
 
-    public function index(Request $request)
-    {
-        return Sale::query()
-            ->with('customer:id,name', 'items:id,sale_id,curry_item_id,curry_name_snapshot,quantity,unit_price_snapshot_kyat,line_total_kyat')
-            ->orderByDesc('sale_at')
-            ->orderByDesc('id')
-            ->limit(100)
-            ->get();
+        return response()->json([
+            'customers' => $customers,
+            'curries' => $this->curryOptions($request, availableOnly: false),
+        ]);
     }
 
     public function store(Request $request, LedgerService $ledgerService, AuditService $auditService)
@@ -67,8 +46,8 @@ class SaleController extends Controller
             'discount_kyat' => ['required', 'integer', 'min:0', 'max:9000000000000'],
             'paid_kyat' => ['required', 'integer', 'min:0', 'max:9000000000000'],
             'idempotency_key' => ['nullable', 'string', 'max:120'],
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.curry_item_id' => ['required', 'integer', 'distinct', 'exists:curry_items,id'],
+            'items' => ['required', 'array', 'min:1', 'max:200'],
+            'items.*.curry_item_id' => ['required', 'integer', 'distinct'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:1000'],
         ]);
 
@@ -116,6 +95,7 @@ class SaleController extends Controller
         $preparedItems = $this->prepareSaleItems($data['items']);
 
         $subtotal = array_sum(array_column($preparedItems, 'line_total_kyat'));
+        $this->validateSaleTotal($subtotal);
         $total = max(0, $subtotal - (int) $data['discount_kyat']);
         $unpaid = $total - (int) $data['paid_kyat'];
 
@@ -215,8 +195,8 @@ class SaleController extends Controller
             'discount_kyat' => ['required', 'integer', 'min:0', 'max:9000000000000'],
             'paid_kyat' => ['required', 'integer', 'min:0', 'max:9000000000000'],
             'reason' => ['required', 'string', 'max:500'],
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.curry_item_id' => ['required', 'integer', 'distinct', 'exists:curry_items,id'],
+            'items' => ['required', 'array', 'min:1', 'max:200'],
+            'items.*.curry_item_id' => ['required', 'integer', 'distinct'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:1000'],
         ]);
 
@@ -248,6 +228,7 @@ class SaleController extends Controller
 
         $preparedItems = $this->prepareSaleItems($data['items']);
         $subtotal = array_sum(array_column($preparedItems, 'line_total_kyat'));
+        $this->validateSaleTotal($subtotal);
         $total = max(0, $subtotal - (int) $data['discount_kyat']);
         $unpaid = $total - (int) $data['paid_kyat'];
 
@@ -404,34 +385,126 @@ class SaleController extends Controller
 
     private function prepareSaleItems(array $items): array
     {
-        $prepared = [];
+        $curries = CurryItem::query()
+            ->whereKey(collect($items)->pluck('curry_item_id')->map(fn ($id) => (int) $id))
+            ->get()
+            ->keyBy('id');
 
-        foreach ($items as $rawItem) {
-            $curry = CurryItem::query()->findOrFail((int) $rawItem['curry_item_id']);
+        return collect($items)->map(function (array $rawItem) use ($curries) {
+            $curryId = (int) $rawItem['curry_item_id'];
+            $curry = $curries->get($curryId);
+
+            if (! $curry) {
+                throw ValidationException::withMessages([
+                    'items' => ["Curry item {$curryId} no longer exists."],
+                ]);
+            }
 
             if (! $curry->is_available || $curry->is_archived) {
                 throw ValidationException::withMessages([
-                    'curry_item_id' => ["Curry item {$curry->id} is not available for sale."],
+                    'items' => ["Curry item {$curry->id} is not available for sale."],
                 ]);
             }
 
             $quantity = (int) $rawItem['quantity'];
             $unitPrice = (int) $curry->current_price_kyat;
-            $prepared[] = [
+
+            return [
                 'curry_item_id' => $curry->id,
                 'curry_name_snapshot' => $curry->name,
                 'quantity' => $quantity,
                 'unit_price_snapshot_kyat' => $unitPrice,
                 'line_total_kyat' => $quantity * $unitPrice,
             ];
+        })->all();
+    }
+
+    private function customerOptions(Request $request, bool $activeOnly)
+    {
+        $request->validate([
+            'customer_q' => ['nullable', 'string', 'max:100'],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+        ]);
+        $search = trim((string) $request->query('customer_q', ''));
+        $selectedId = $request->integer('customer_id') ?: null;
+        $columns = ['id', 'name', 'phone_number', 'is_active', 'is_archived'];
+        $query = Customer::query()
+            ->withSum('ledgerEntries as ledger_balance', 'amount_kyat')
+            ->when($activeOnly, fn ($builder) => $builder->where('is_active', true))
+            ->when($search !== '', function ($builder) use ($search) {
+                $builder->where(function ($matches) use ($search) {
+                    $matches->where('name', 'like', "%{$search}%")
+                        ->orWhere('phone_number', 'like', "%{$search}%");
+                });
+            })
+            ->orderBy('name')
+            ->limit(50);
+        $customers = $query->get($columns);
+
+        if ($selectedId && ! $customers->contains('id', $selectedId)) {
+            $selected = Customer::query()
+                ->withSum('ledgerEntries as ledger_balance', 'amount_kyat')
+                ->when($activeOnly, fn ($builder) => $builder->where('is_active', true))
+                ->whereKey($selectedId)
+                ->first($columns);
+            if ($selected) {
+                $customers->prepend($selected);
+            }
         }
 
-        return $prepared;
+        return $customers->values();
+    }
+
+    private function curryOptions(Request $request, bool $availableOnly)
+    {
+        $request->validate([
+            'curry_q' => ['nullable', 'string', 'max:100'],
+            'curry_item_ids' => ['nullable', 'array', 'max:200'],
+            'curry_item_ids.*' => ['integer', 'distinct', 'exists:curry_items,id'],
+        ]);
+        $search = trim((string) $request->query('curry_q', ''));
+        $selectedIds = collect($request->query('curry_item_ids', []))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+        $query = CurryItem::query()
+            ->when($availableOnly, function ($builder) {
+                $builder->where('is_available', true)->where('is_archived', false);
+            })
+            ->when($search !== '', fn ($builder) => $builder->where('name', 'like', "%{$search}%"))
+            ->orderBy('display_order')
+            ->orderBy('name')
+            ->limit(50);
+        $curries = $query->get();
+
+        if ($selectedIds->isNotEmpty()) {
+            $missing = $selectedIds->diff($curries->pluck('id'));
+            if ($missing->isNotEmpty()) {
+                $selected = CurryItem::query()
+                    ->when($availableOnly, function ($builder) {
+                        $builder->where('is_available', true)->where('is_archived', false);
+                    })
+                    ->whereKey($missing)
+                    ->get();
+                $curries = $selected->concat($curries);
+            }
+        }
+
+        return $curries->values();
     }
 
     private function generateInvoiceNumber(): string
     {
-        return now()->format('YmdHis').random_int(100, 999);
+        return now()->format('YmdHisv').random_int(100, 999);
+    }
+
+    private function validateSaleTotal(int $subtotal): void
+    {
+        if ($subtotal > 9000000000000) {
+            throw ValidationException::withMessages([
+                'items' => ['Sale subtotal cannot exceed 9,000,000,000,000 Kyat.'],
+            ]);
+        }
     }
 
     private function assertSameIdempotentSubmission(Sale $sale, array $data): void

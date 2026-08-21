@@ -73,6 +73,39 @@ class CurryCustomerTest extends TestCase
         $this->actingAs($authorized)->postJson('/api/curry-categories', ['name' => 'Breakfast'])->assertNotFound();
     }
 
+    public function test_curry_and_customer_lists_are_database_paginated(): void
+    {
+        $user = $this->makeUserWithPermissions(['manage_curry_items', 'view_customers']);
+        foreach (range(1, 30) as $index) {
+            CurryItem::query()->create([
+                'name' => sprintf('Paged Curry %02d', $index),
+                'current_price_kyat' => 100,
+                'display_order' => $index,
+                'is_available' => true,
+                'is_archived' => false,
+            ]);
+            Customer::query()->create([
+                'name' => sprintf('Paged Customer %02d', $index),
+                'is_active' => true,
+                'is_archived' => false,
+            ]);
+        }
+
+        $this->actingAs($user)
+            ->getJson('/api/curry-items?per_page=10')
+            ->assertOk()
+            ->assertJsonPath('total', 30)
+            ->assertJsonPath('last_page', 3)
+            ->assertJsonCount(10, 'data');
+
+        $this->actingAs($user)
+            ->getJson('/api/customers?per_page=10')
+            ->assertOk()
+            ->assertJsonPath('total', 30)
+            ->assertJsonPath('last_page', 3)
+            ->assertJsonCount(10, 'data');
+    }
+
     public function test_customers_can_be_created_with_opening_balance_reason_and_searched_by_name_or_phone(): void
     {
         $user = $this->makeUserWithPermissions([

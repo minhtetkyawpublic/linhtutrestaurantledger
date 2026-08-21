@@ -24,7 +24,7 @@ class RolesPermissionsSeeder extends Seeder
             ['name' => 'record_customer_payment', 'label' => 'Record customer payment'],
             ['name' => 'record_money_given_lent', 'label' => 'Record money lent/returned'],
             ['name' => 'correct_reverse_ledger', 'label' => 'Correct or reverse ledger'],
-            ['name' => 'view_customer_statements', 'label' => 'View customer statements'],
+            ['name' => 'view_customer_statements', 'label' => 'View customer ledger'],
             ['name' => 'view_reports', 'label' => 'View reports'],
             ['name' => 'manage_curry_items', 'label' => 'Manage curry items'],
             ['name' => 'manage_staff_and_permissions', 'label' => 'Manage staff and permissions'],

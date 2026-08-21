@@ -86,4 +86,25 @@ class HistoryPaginationTest extends TestCase
             ->assertJsonPath('total', 2)
             ->assertJsonPath('data.0.type', 'customer_paid');
     }
+
+    public function test_custom_history_range_requires_both_dates(): void
+    {
+        $user = User::factory()->create();
+        $permission = Permission::query()->firstOrCreate(
+            ['name' => 'view_sales_history'],
+            ['label' => 'View sales history']
+        );
+        $role = Role::query()->create([
+            'name' => 'history-range-test',
+            'display_name' => 'History range test',
+            'is_system' => false,
+        ]);
+        $role->permissions()->sync([$permission->id]);
+        $user->roles()->sync([$role->id]);
+
+        $this->actingAs($user)
+            ->getJson('/api/histories?range=custom')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('date_range');
+    }
 }

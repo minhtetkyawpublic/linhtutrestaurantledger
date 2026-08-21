@@ -1,5 +1,8 @@
 # Phase 8 — Burmese and English localization + finalization
 
+> Superseded in part: PDF-specific localization is no longer present because
+> receipt and statement PDFs were removed by owner decision.
+
 Reference:
 - `DEVELOPMENT_ROADMAP.md` Section 8 and 11
 

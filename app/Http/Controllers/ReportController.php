@@ -13,19 +13,52 @@ use Illuminate\Validation\ValidationException;
 
 class ReportController extends Controller
 {
-    public function filterOptions()
+    public function filterOptions(Request $request)
     {
+        $request->validate([
+            'customer_q' => ['nullable', 'string', 'max:100'],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'curry_q' => ['nullable', 'string', 'max:100'],
+            'curry_item_id' => ['nullable', 'integer', 'exists:curry_items,id'],
+        ]);
+        $customerSearch = trim((string) $request->query('customer_q', ''));
+        $currySearch = trim((string) $request->query('curry_q', ''));
+        $selectedCustomerId = $request->integer('customer_id') ?: null;
+        $selectedCurryId = $request->integer('curry_item_id') ?: null;
         $customers = Customer::query()
+            ->when($customerSearch !== '', function ($query) use ($customerSearch) {
+                $query->where(function ($matches) use ($customerSearch) {
+                    $matches->where('name', 'like', "%{$customerSearch}%")
+                        ->orWhere('phone_number', 'like', "%{$customerSearch}%");
+                });
+            })
             ->orderBy('name')
+            ->limit(50)
             ->get(['id', 'name', 'is_active', 'is_archived']);
+        if ($selectedCustomerId && ! $customers->contains('id', $selectedCustomerId)) {
+            $selectedCustomer = Customer::query()->find($selectedCustomerId, ['id', 'name', 'is_active', 'is_archived']);
+            if ($selectedCustomer) {
+                $customers->prepend($selectedCustomer);
+            }
+        }
         $customers->each->setAppends([]);
+
+        $curries = CurryItem::query()
+            ->when($currySearch !== '', fn ($query) => $query->where('name', 'like', "%{$currySearch}%"))
+            ->orderBy('display_order')
+            ->orderBy('name')
+            ->limit(50)
+            ->get(['id', 'name', 'is_archived']);
+        if ($selectedCurryId && ! $curries->contains('id', $selectedCurryId)) {
+            $selectedCurry = CurryItem::query()->find($selectedCurryId, ['id', 'name', 'is_archived']);
+            if ($selectedCurry) {
+                $curries->prepend($selectedCurry);
+            }
+        }
 
         return response()->json([
             'customers' => $customers,
-            'curries' => CurryItem::query()
-                ->orderBy('display_order')
-                ->orderBy('name')
-                ->get(['id', 'name', 'is_archived']),
+            'curries' => $curries,
         ]);
     }
 
@@ -57,29 +90,6 @@ class ReportController extends Controller
             $filters
         );
 
-        $cancelledCount = (int) Sale::query()
-            ->where('is_reversed', true)
-            ->whereBetween('sale_at', [$filters['from'], $filters['to']])
-            ->when($request->filled('customer_id'), function ($query) use ($request) {
-                $query->where('customer_id', (int) $request->query('customer_id'));
-            })
-            ->when($request->filled('curry_item_id'), function ($query) use ($request) {
-                $query->whereHas('items', function ($itemsQuery) use ($request) {
-                    if ($request->filled('curry_item_id')) {
-                        $itemsQuery->where('curry_item_id', (int) $request->query('curry_item_id'));
-                    }
-                });
-            })
-            ->count();
-
-        $reversedLedgerCount = (int) CustomerLedgerEntry::query()
-            ->where('event_type', 'ledger_entry_reversed')
-            ->whereBetween('occurred_at', [$filters['from'], $filters['to']])
-            ->when($request->filled('customer_id'), function ($query) use ($request) {
-                $query->where('customer_id', (int) $request->query('customer_id'));
-            })
-            ->count();
-
         return response()->json([
             'period' => [
                 'from' => $filters['from']->toIso8601String(),
@@ -92,8 +102,6 @@ class ReportController extends Controller
             'customer_payments_received' => $customerPayments,
             'money_lent_or_returned' => $moneyLent,
             'sales_count' => (int) $totals->sales_count,
-            'reversed_sales_count' => $cancelledCount,
-            'reversed_ledger_entries_count' => $reversedLedgerCount,
             'paid_status' => $request->query('paid_status'),
         ]);
     }
@@ -187,6 +195,12 @@ class ReportController extends Controller
         $today = now()->timezone(config('app.timezone'))->startOfDay();
 
         if ((filled($fromInput) && ! filled($toInput)) || (! filled($fromInput) && filled($toInput))) {
+            throw ValidationException::withMessages([
+                'date_range' => ['Both from and to are required for custom date ranges.'],
+            ]);
+        }
+
+        if ($range === 'custom' && (! filled($fromInput) || ! filled($toInput))) {
             throw ValidationException::withMessages([
                 'date_range' => ['Both from and to are required for custom date ranges.'],
             ]);

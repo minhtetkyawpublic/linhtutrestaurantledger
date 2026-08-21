@@ -8,12 +8,21 @@ use Illuminate\Http\Request;
 
 class CurryItemController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $request->validate([
+            'q' => ['nullable', 'string', 'max:100'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $search = trim((string) $request->query('q', ''));
+        $perPage = min(50, max(10, $request->integer('per_page', 25)));
+
         return CurryItem::query()
+            ->when($search !== '', fn ($query) => $query->where('name', 'like', "%{$search}%"))
             ->orderBy('display_order')
             ->orderBy('name')
-            ->get();
+            ->paginate($perPage);
     }
 
     public function store(Request $request, AuditService $auditService)
@@ -28,7 +37,6 @@ class CurryItemController extends Controller
         $item = CurryItem::create([
             'name' => $data['name'],
             'current_price_kyat' => $data['current_price_kyat'],
-            'curry_category_id' => null,
             'display_order' => $data['display_order'] ?? 0,
             'is_available' => $data['is_available'] ?? true,
         ]);
@@ -47,7 +55,7 @@ class CurryItemController extends Controller
         ]);
 
         $before = $curry_item->only(['name', 'current_price_kyat', 'display_order', 'is_available']);
-        $curry_item->fill([...$data, 'curry_category_id' => null]);
+        $curry_item->fill($data);
         $curry_item->save();
         $auditService->record($request->user(), 'curry_item_updated', $curry_item, [
             'before' => $before,

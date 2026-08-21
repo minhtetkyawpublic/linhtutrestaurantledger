@@ -62,6 +62,7 @@ class HistoryController extends Controller
             ->fromSub($sales->unionAll($ledger), 'history')
             ->orderByDesc('occurred_at')
             ->orderByDesc('record_id')
+            ->orderBy('type')
             ->paginate($perPage);
 
         $rows->through(fn ($row) => [
@@ -86,11 +87,31 @@ class HistoryController extends Controller
         ]);
     }
 
-    public function filterOptions()
+    public function filterOptions(Request $request)
     {
+        $request->validate([
+            'customer_q' => ['nullable', 'string', 'max:100'],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+        ]);
+        $search = trim((string) $request->query('customer_q', ''));
+        $selectedId = $request->integer('customer_id') ?: null;
         $customers = Customer::query()
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($matches) use ($search) {
+                    $matches->where('name', 'like', "%{$search}%")
+                        ->orWhere('phone_number', 'like', "%{$search}%");
+                });
+            })
             ->orderBy('name')
+            ->limit(50)
             ->get(['id', 'name', 'is_archived']);
+
+        if ($selectedId && ! $customers->contains('id', $selectedId)) {
+            $selected = Customer::query()->find($selectedId, ['id', 'name', 'is_archived']);
+            if ($selected) {
+                $customers->prepend($selected);
+            }
+        }
         $customers->each->setAppends([]);
 
         return response()->json([
@@ -116,6 +137,10 @@ class HistoryController extends Controller
 
         if ((filled($fromInput) && ! filled($toInput)) || (! filled($fromInput) && filled($toInput))) {
             throw ValidationException::withMessages(['date_range' => ['Both dates are required.']]);
+        }
+
+        if ($range === 'custom' && (! filled($fromInput) || ! filled($toInput))) {
+            throw ValidationException::withMessages(['date_range' => ['Both dates are required for a custom range.']]);
         }
 
         if (filled($fromInput) && filled($toInput)) {

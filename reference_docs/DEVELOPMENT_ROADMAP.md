@@ -1,5 +1,9 @@
 # Lin Htut Restaurant Ledger — Development Roadmap
 
+> Historical planning document. The owner's later product decisions remove
+> curry categories, receipt/statement PDF generation, sharing, and receipt
+> previews. Use `IMPLEMENTATION_AUDIT.md` as the current authoritative record.
+
 ## 1. Product goal
 
 Build a very simple, phone-first restaurant ledger for one restaurant location. Its main purpose is to record:

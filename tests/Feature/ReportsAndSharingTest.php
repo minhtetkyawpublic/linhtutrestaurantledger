@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\CurryCategory;
 use App\Models\CurryItem;
 use App\Models\Customer;
 use App\Models\Permission;
@@ -47,16 +46,9 @@ class ReportsAndSharingTest extends TestCase
         return $user;
     }
 
-    private function createCategoryAndItems(): array
+    private function createItems(): array
     {
-        $category = CurryCategory::query()->create([
-            'name' => 'Curry',
-            'display_order' => 1,
-            'is_active' => true,
-        ]);
-
         $small = CurryItem::query()->create([
-            'curry_category_id' => $category->id,
             'name' => 'Small curry',
             'current_price_kyat' => 100,
             'is_available' => true,
@@ -65,7 +57,6 @@ class ReportsAndSharingTest extends TestCase
         ]);
 
         $big = CurryItem::query()->create([
-            'curry_category_id' => $category->id,
             'name' => 'Big curry',
             'current_price_kyat' => 1200,
             'is_available' => true,
@@ -80,14 +71,7 @@ class ReportsAndSharingTest extends TestCase
     {
         $user = $this->makeUserWithPermissions(['create_sale']);
 
-        $category = CurryCategory::query()->create([
-            'name' => 'One',
-            'display_order' => 1,
-            'is_active' => true,
-        ]);
-
         $item = CurryItem::query()->create([
-            'curry_category_id' => $category->id,
             'name' => 'Fish curry',
             'current_price_kyat' => 450,
             'is_available' => true,
@@ -172,7 +156,7 @@ class ReportsAndSharingTest extends TestCase
             'delete_reverse_sale',
         ]);
 
-        [$small, $big] = $this->createCategoryAndItems();
+        [$small, $big] = $this->createItems();
         $customer = Customer::query()->create([
             'name' => 'Hla Hla',
             'phone_number' => '0999000333',
@@ -227,7 +211,6 @@ class ReportsAndSharingTest extends TestCase
         $afterReversal = $this->actingAs($user)->getJson('/api/reports/sales-summary?range=today');
         $afterReversal->assertOk();
         $afterReversal->assertJsonPath('sales_count', 0);
-        $afterReversal->assertJsonPath('reversed_sales_count', 1);
     }
 
     public function test_reversed_customer_money_entries_do_not_inflate_report_totals(): void
@@ -257,7 +240,6 @@ class ReportsAndSharingTest extends TestCase
         $before = $this->actingAs($user)->getJson('/api/reports/sales-summary?range=today');
         $before->assertJsonPath('customer_payments_received', 300);
         $before->assertJsonPath('money_lent_or_returned', 500);
-        $before->assertJsonPath('reversed_ledger_entries_count', 0);
 
         $this->actingAs($user)->postJson("/api/customers/{$customer->id}/ledger/{$payment->json('id')}/reverse", [
             'reason' => 'Payment was entered twice',
@@ -269,7 +251,6 @@ class ReportsAndSharingTest extends TestCase
         $after = $this->actingAs($user)->getJson('/api/reports/sales-summary?range=today');
         $after->assertJsonPath('customer_payments_received', 0);
         $after->assertJsonPath('money_lent_or_returned', 0);
-        $after->assertJsonPath('reversed_ledger_entries_count', 2);
     }
 
     public function test_corrected_customer_payment_reports_only_the_replacement_amount(): void
@@ -301,7 +282,55 @@ class ReportsAndSharingTest extends TestCase
 
         $summary = $this->actingAs($user)->getJson('/api/reports/sales-summary?range=today');
         $summary->assertOk()
-            ->assertJsonPath('customer_payments_received', 125)
-            ->assertJsonPath('reversed_ledger_entries_count', 1);
+            ->assertJsonPath('customer_payments_received', 125);
+    }
+
+    public function test_custom_report_range_requires_both_dates(): void
+    {
+        $user = $this->makeUserWithPermissions(['view_reports']);
+
+        $this->actingAs($user)
+            ->getJson('/api/reports/sales-summary?range=custom')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('date_range');
+    }
+
+    public function test_report_filter_options_are_bounded_and_searchable(): void
+    {
+        $user = $this->makeUserWithPermissions(['view_reports']);
+        foreach (range(1, 60) as $index) {
+            Customer::query()->create([
+                'name' => sprintf('Report Customer %03d', $index),
+                'is_active' => true,
+                'is_archived' => false,
+            ]);
+            CurryItem::query()->create([
+                'name' => sprintf('Report Curry %03d', $index),
+                'current_price_kyat' => 100,
+                'display_order' => $index,
+                'is_available' => true,
+                'is_archived' => false,
+            ]);
+        }
+        $customer = Customer::query()->where('name', 'Report Customer 060')->firstOrFail();
+        $curry = CurryItem::query()->where('name', 'Report Curry 060')->firstOrFail();
+
+        $this->actingAs($user)
+            ->getJson('/api/reports/filter-options')
+            ->assertOk()
+            ->assertJsonCount(50, 'customers')
+            ->assertJsonCount(50, 'curries');
+
+        $this->actingAs($user)
+            ->getJson('/api/reports/filter-options?customer_q=060&curry_q=060')
+            ->assertOk()
+            ->assertJsonPath('customers.0.id', $customer->id)
+            ->assertJsonPath('curries.0.id', $curry->id);
+
+        $this->actingAs($user)
+            ->getJson("/api/reports/filter-options?customer_id={$customer->id}&curry_item_id={$curry->id}")
+            ->assertOk()
+            ->assertJsonCount(51, 'customers')
+            ->assertJsonCount(51, 'curries');
     }
 }

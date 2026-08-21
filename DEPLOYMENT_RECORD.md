@@ -7,27 +7,28 @@
 - Application timezone: `Asia/Yangon`
 - Frontend gate: `npm run build:verify`
 - Backend gate: `php artisan test`
-- Latest local migration: `2026_08_20_000008_expand_ledger_reason_column`
-- Verification date: `2026-08-20` (`Asia/Yangon`)
+- Latest repository migration: `2026_08_21_000011_remove_curry_categories`
+- Verification date: `2026-08-21` (`Asia/Yangon`)
 - Frontend result: 19 UI tests; production build assets and service worker
-  version `09b9849aea97` verified
-- Development frontend result: live Vite/React Chrome test passes with the
-  refresh preamble and application CSS loaded; Vite was stopped and
-  `public/hot` removed after verification
+  version `976cc4e94c88` verified
+- Development frontend result: the C:-project Vite server is available for
+  local development; the production build gate also passes without relying on
+  React refresh.
 - Compact-layout result: isolated Chrome phone preview at 390 x 844 passes
   without horizontal overflow; report filters render as a centered fade-in
   modal, and the captured brand icon is generated from `linhtuticon.jpg`
 - Browser result: Chrome mobile viewport (390 x 844) passed login, direct report
   route refresh, English/Myanmar layouts, logout/re-login, and offline fallback
-- Backend result: 63 tests, 405 assertions on both the default test profile and
-  the isolated C: MariaDB `linhtutrestaurant_test` profile
-- Dependency audit: Composer and npm report no known vulnerabilities
+- Backend result: 74 tests, 446 assertions on both the default test profile and
+  the isolated MariaDB/MySQL `linhtutrestaurant_test` profile
+- Dependency audit: Composer and npm report no known vulnerabilities; the
+  removed PDF feature's deprecated TCPDF dependency is no longer installed
 - Formatting result: Prettier and Laravel Pint pass
 - Local URL tested: `http://127.0.0.1:8000`
 - Health URL tested: `http://127.0.0.1:8000/api/health`
 - Live HTTP result: root/assets/health/service worker return 200; health reports
-  `database=mysql` and `database_ok=true`; authenticated login and CSRF-protected
-  post-login mutations succeed
+  `database_ok=true` without exposing the database driver; authenticated login
+  and CSRF-protected post-login mutations succeed
 - C: Apache hardening result: `/.env` is denied and compiled assets are served.
   The application front controller is reached, but C: Apache cannot execute
   Laravel until its bundled PHP 8.0.30 is upgraded to PHP 8.2 or newer.
@@ -51,12 +52,12 @@
 
 ## Release record
 
-- Git commit SHA: **Unavailable — this directory is not currently a Git worktree**
+- Git commit SHA: **Current audit changes are pending their final verified commit**
 - Migrations applied in production: **Pending**
 - Sensitive-path HTTP checks: **Automated locally; production HTTPS verification pending**
 - SPA root/nested refresh checks: **Automated locally; production URL verification pending**
 - Android install test: **Pending real device**
 - iOS Add to Home Screen test: **Pending real device**
-- Native PDF share test: **Pending real phone/browser**
+- Removed receipt/statement PDF features: **Confirmed absent by route and UI tests**
 
 Do not mark production deployment complete until every pending production field is filled and verified.

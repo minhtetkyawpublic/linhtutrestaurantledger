@@ -1,5 +1,9 @@
 # Phase 4 — Sales and ledger (implemented and verified)
 
+> Superseded in part: receipt previews and PDF receipt actions were later
+> removed. Sales are reviewed through the paginated unified History list and a
+> dedicated sale-details route.
+
 Reference:
 - `DEVELOPMENT_ROADMAP.md` Section 10 (Phase 4)
 

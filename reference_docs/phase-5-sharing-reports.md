@@ -1,4 +1,8 @@
-# Phase 5 — Sharing and reports (implemented and wired in UI shell)
+# Phase 5 — Reports (sharing features removed)
+
+> Superseded: receipt/statement PDF and sharing features were later removed by
+> owner decision. The report endpoints and filtered report UI remain current;
+> curry-category filters do not.
 
 Reference:
 - `DEVELOPMENT_ROADMAP.md` Section 10 (Phase 5)

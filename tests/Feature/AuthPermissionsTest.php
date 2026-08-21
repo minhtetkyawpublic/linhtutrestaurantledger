@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RolesPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AuthPermissionsTest extends TestCase
@@ -63,6 +64,20 @@ class AuthPermissionsTest extends TestCase
             'user' => ['email' => 'cashier@example.com'],
             'permissions' => ['view_dashboard'],
         ]);
+    }
+
+    public function test_login_normalizes_email_case_and_whitespace(): void
+    {
+        User::factory()->create([
+            'password' => 'password',
+            'email' => 'cashier@example.com',
+            'is_disabled' => false,
+        ]);
+
+        $this->postJson('/api/auth/login', [
+            'email' => '  CASHIER@EXAMPLE.COM  ',
+            'password' => 'password',
+        ])->assertOk()->assertJsonPath('user.email', 'cashier@example.com');
     }
 
     public function test_disabled_user_cannot_access_active_routes(): void
@@ -123,6 +138,27 @@ class AuthPermissionsTest extends TestCase
         $response->assertJsonFragment(['email' => 'admin@example.com']);
     }
 
+    public function test_staff_list_is_searchable_and_paginated(): void
+    {
+        $manage = Permission::query()->firstOrCreate(
+            ['name' => 'manage_staff_and_permissions'],
+            ['label' => 'Manage staff and permissions']
+        );
+        $admin = User::factory()->create(['name' => 'List Manager']);
+        $admin->directPermissions()->attach($manage);
+        User::factory()->create([
+            'name' => 'Unique Cashier',
+            'email' => 'unique-cashier@example.com',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson('/api/admin/staff?q=unique-cashier&per_page=1')
+            ->assertOk()
+            ->assertJsonPath('per_page', 1)
+            ->assertJsonPath('total', 1)
+            ->assertJsonPath('data.0.email', 'unique-cashier@example.com');
+    }
+
     public function test_disabled_users_cannot_login(): void
     {
         User::factory()->create([
@@ -173,14 +209,31 @@ class AuthPermissionsTest extends TestCase
         ])->assertCreated();
 
         $staffId = $created->json('id');
+        User::query()->whereKey($staffId)->update(['remember_token' => 'old-remember-token']);
         $this->assertDatabaseHas('user_role', ['user_id' => $staffId, 'role_id' => $cashier->id]);
         $this->assertDatabaseHas('user_permission', ['user_id' => $staffId, 'permission_id' => $createSale->id]);
+
+        config(['session.driver' => 'database']);
+        DB::table('sessions')->insert([
+            'id' => 'staff-session-to-revoke',
+            'user_id' => $staffId,
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'Test browser',
+            'payload' => 'test',
+            'last_activity' => now()->timestamp,
+        ]);
 
         $this->actingAs($admin)->putJson("/api/admin/staff/{$staffId}/password", [
             'password' => 'NewStrongPass123!',
             'password_confirmation' => 'NewStrongPass123!',
             'reason' => 'Owner requested reset',
         ])->assertOk();
+
+        $this->assertDatabaseMissing('sessions', ['id' => 'staff-session-to-revoke']);
+        $this->assertNotSame(
+            'old-remember-token',
+            User::query()->findOrFail($staffId)->remember_token
+        );
 
         $this->actingAs($admin)->getJson('/api/admin/audit-history')
             ->assertOk()
@@ -194,5 +247,31 @@ class AuthPermissionsTest extends TestCase
             ->assertJsonPath('per_page', 20)
             ->assertJsonFragment(['action' => 'staff_created'])
             ->assertJsonFragment(['action' => 'staff_password_reset']);
+    }
+
+    public function test_last_active_staff_manager_cannot_remove_their_own_management_access(): void
+    {
+        $manage = Permission::query()->create([
+            'name' => 'manage_staff_and_permissions',
+            'label' => 'Manage staff',
+        ]);
+        $admin = User::factory()->create([
+            'name' => 'Only Manager',
+            'email' => 'only-manager@example.com',
+            'is_disabled' => false,
+        ]);
+        $admin->directPermissions()->attach($manage);
+
+        $this->actingAs($admin)
+            ->putJson("/api/admin/staff/{$admin->id}", [
+                'name' => $admin->name,
+                'email' => $admin->email,
+                'role_ids' => [],
+                'permission_ids' => [],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('permissions');
+
+        $this->assertTrue($admin->refresh()->hasPermission('manage_staff_and_permissions'));
     }
 }

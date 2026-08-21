@@ -38,10 +38,9 @@ Reference:
   - compiled styling and no Vite React preamble/console error
   - login, direct `/reports` refresh, English/Myanmar layouts, and logout
   - service-worker offline navigation fallback
-- Financial/PDF integrity:
+- Financial integrity:
   - database uniqueness for ledger reversals
   - reversal-aware reports
-  - multi-page TCPDF output with embedded Padauk Myanmar font
 - PWA integrity:
   - generated, build-versioned service worker
   - API requests always bypass caches at root and nested paths
@@ -49,7 +48,6 @@ Reference:
 ## Not-yet-complete items (external/manual work)
 
 - Android/iOS installation still requires physical-device confirmation.
-- The native share sheet still requires the owner's real phone/browser.
 - Final Burmese wording remains an owner review.
 - Database uniqueness and row locking are implemented and feature-tested, but a
   production-MySQL load/stress test remains pending.

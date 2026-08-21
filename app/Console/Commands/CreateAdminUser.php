@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rules\Password;
 
 class CreateAdminUser extends Command
 {
@@ -18,7 +19,7 @@ class CreateAdminUser extends Command
     public function handle(): int
     {
         $name = (string) ($this->option('name') ?: $this->ask('Administrator name'));
-        $email = (string) ($this->option('email') ?: $this->ask('Administrator email'));
+        $email = strtolower(trim((string) ($this->option('email') ?: $this->ask('Administrator email'))));
         $password = (string) $this->secret('Password (minimum 12 characters)');
         $confirmation = (string) $this->secret('Confirm password');
 
@@ -30,7 +31,7 @@ class CreateAdminUser extends Command
         ], [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:12', 'confirmed'],
+            'password' => ['required', 'string', 'max:255', 'confirmed', Password::min(12)->letters()->mixedCase()->numbers()->symbols()],
         ]);
 
         if ($validator->fails()) {

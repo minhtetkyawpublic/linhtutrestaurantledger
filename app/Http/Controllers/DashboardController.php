@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Customer;
 use App\Models\CustomerLedgerEntry;
 use App\Models\Sale;
+use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
@@ -13,9 +13,15 @@ class DashboardController extends Controller
         $sales = Sale::query()
             ->where('is_reversed', false)
             ->whereBetween('sale_at', [today(), today()->endOfDay()]);
-        $customerBalances = Customer::query()
-            ->get()
-            ->map(fn (Customer $customer) => $customer->currentBalanceKyat());
+        $customerBalances = CustomerLedgerEntry::query()
+            ->select('customer_id')
+            ->selectRaw('SUM(amount_kyat) as balance')
+            ->groupBy('customer_id');
+        $customerDebt = DB::query()
+            ->fromSub($customerBalances, 'customer_balances')
+            ->selectRaw('COALESCE(SUM(CASE WHEN balance > 0 THEN balance ELSE 0 END), 0) as total_debt')
+            ->selectRaw('COALESCE(SUM(CASE WHEN balance > 0 THEN 1 ELSE 0 END), 0) as owing_count')
+            ->first();
         $recentActivity = CustomerLedgerEntry::query()
             ->with('customer:id,name')
             ->orderByDesc('occurred_at')
@@ -33,8 +39,8 @@ class DashboardController extends Controller
         return response()->json([
             'total_sales' => (int) (clone $sales)->sum('total_kyat'),
             'sales_count' => (int) (clone $sales)->count(),
-            'total_customer_debt' => (int) $customerBalances->filter(fn (int $balance) => $balance > 0)->sum(),
-            'customers_owe_count' => $customerBalances->filter(fn (int $balance) => $balance > 0)->count(),
+            'total_customer_debt' => (int) $customerDebt->total_debt,
+            'customers_owe_count' => (int) $customerDebt->owing_count,
             'recent_activity' => $recentActivity,
         ]);
     }

@@ -12,7 +12,7 @@ class RoutingTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertSee('id="app-root"', false);
-        $response->assertSee('window.__APP_BASE_PATH', false);
+        $response->assertSee('data-app-base-path=', false);
         $this->assertStringContainsString('@viteReactRefresh', file_get_contents(resource_path('views/welcome.blade.php')));
     }
 
@@ -22,7 +22,7 @@ class RoutingTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertSee('id="app-root"', false);
-        $response->assertSee('window.__APP_BASE_PATH', false);
+        $response->assertSee('data-app-base-path=', false);
     }
 
     public function test_permission_middleware_redirect_uses_the_configured_application_root(): void
@@ -65,7 +65,6 @@ class RoutingTest extends TestCase
             ->assertStatus(503)
             ->assertJson([
                 'ok' => false,
-                'database' => 'broken_health_probe',
                 'database_ok' => false,
             ]);
     }

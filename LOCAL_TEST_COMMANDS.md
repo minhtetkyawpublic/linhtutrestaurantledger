@@ -18,11 +18,19 @@ C:\xampp\htdocs\linhtutrestaurant
 ## 2. Verify PHP before starting
 
 ```powershell
-where.exe php
-php -v
+$restaurantPhp = 'C:\xampp\htdocs\linhtutrestaurant\storage\app\test-runtime\php-8.2\php.exe'
+& $restaurantPhp -v
 ```
 
-Laravel 12 requires PHP 8.2 or newer. The currently installed `C:\xampp\php\php.exe` is PHP 8.0.30, so upgrade the PHP in C: XAMPP before requiring a strictly C:-only runtime. Do not use PHP 8.0 for this app.
+Laravel 12 requires PHP 8.2 or newer. The project currently has a verified,
+official PHP 8.2.33 local runtime at the path above, entirely inside this C:
+project. Use it for the commands in this guide until the bundled C: XAMPP PHP
+is upgraded.
+
+If `where.exe php` points to `D:\xampp`, stop. Do not run this project's Artisan
+commands through the old D: XAMPP runtime. Upgrade/configure the C: PHP runtime,
+then confirm `where.exe php` points to `C:\xampp\php\php.exe` and `php -v`
+reports PHP 8.2 or newer.
 
 ## 3. Prepare the local app
 
@@ -33,9 +41,9 @@ not empty, set the matching `DB_USERNAME` and `DB_PASSWORD` in `.env` first.
 
 ```powershell
 cd C:\xampp\htdocs\linhtutrestaurant
-php artisan optimize:clear
-php artisan migrate
-php artisan db:seed --class=Database\Seeders\DatabaseSeeder
+& $restaurantPhp artisan optimize:clear
+& $restaurantPhp artisan migrate
+& $restaurantPhp artisan db:seed --class=Database\Seeders\DatabaseSeeder
 npm run build:verify
 ```
 
@@ -51,7 +59,7 @@ If another app is already using port 8000, close that app's `php artisan serve` 
 
 ```powershell
 cd C:\xampp\htdocs\linhtutrestaurant
-php artisan serve --host=127.0.0.1 --port=8000
+& $restaurantPhp artisan serve --host=127.0.0.1 --port=8000
 ```
 
 Keep that terminal open. Successful output includes:
@@ -95,7 +103,7 @@ The page source should load `/build/assets/app-....js` and must not load `@vite/
 ```powershell
 cd C:\xampp\htdocs\linhtutrestaurant
 npm run build:verify
-php artisan test
+& $restaurantPhp artisan test
 ```
 
 Optional full MariaDB/MySQL profile (uses only the dedicated disposable
@@ -103,7 +111,7 @@ Optional full MariaDB/MySQL profile (uses only the dedicated disposable
 
 ```powershell
 C:\xampp\mysql\bin\mysql.exe -u root -e "CREATE DATABASE IF NOT EXISTS linhtutrestaurant_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-php vendor/bin/phpunit --configuration=phpunit.mysql.xml
+& $restaurantPhp vendor/bin/phpunit --configuration=phpunit.mysql.xml
 ```
 
 `npm run build:verify` includes linting, formatting, complete translation

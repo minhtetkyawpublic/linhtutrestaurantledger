@@ -20,6 +20,14 @@ export const deriveBasePathFromBundledUrl = (currentScriptUrl) => {
         return normalizePath(window.__APP_BASE_PATH);
     }
 
+    if (typeof document !== "undefined") {
+        const configuredBasePath =
+            document.getElementById("app-root")?.dataset.appBasePath;
+        if (configuredBasePath) {
+            return normalizePath(configuredBasePath);
+        }
+    }
+
     return "";
 };
 

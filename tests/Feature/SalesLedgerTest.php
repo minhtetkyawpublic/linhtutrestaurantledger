@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\AuditLog;
-use App\Models\CurryCategory;
 use App\Models\CurryItem;
 use App\Models\Customer;
 use App\Models\CustomerLedgerEntry;
@@ -12,6 +11,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class SalesLedgerTest extends TestCase
@@ -52,14 +52,7 @@ class SalesLedgerTest extends TestCase
 
     private function createCustomerAndItems(): array
     {
-        $category = CurryCategory::query()->create([
-            'name' => 'Curry',
-            'display_order' => 1,
-            'is_active' => true,
-        ]);
-
         $item = CurryItem::query()->create([
-            'curry_category_id' => $category->id,
             'name' => 'Chicken',
             'current_price_kyat' => 500,
             'is_available' => true,
@@ -262,6 +255,89 @@ class SalesLedgerTest extends TestCase
             'items' => [['curry_item_id' => $item->id, 'quantity' => 1]],
         ])->assertUnprocessable()
             ->assertJsonValidationErrors('paid_kyat');
+    }
+
+    public function test_sale_loads_all_selected_curries_in_one_query(): void
+    {
+        $user = $this->makeUserWithPermissions(['create_sale']);
+        [$customer, $firstItem] = $this->createCustomerAndItems();
+        $secondItem = CurryItem::query()->create([
+            'name' => 'Pork',
+            'current_price_kyat' => 700,
+            'is_available' => true,
+            'display_order' => 2,
+            'is_archived' => false,
+        ]);
+        $curryQueries = 0;
+        DB::listen(function ($query) use (&$curryQueries) {
+            if (str_contains(strtolower($query->sql), 'curry_items')) {
+                $curryQueries++;
+            }
+        });
+
+        $this->actingAs($user)->postJson('/api/sales', [
+            'customer_id' => $customer->id,
+            'is_walk_in' => false,
+            'sale_at' => now()->toIso8601String(),
+            'discount_kyat' => 0,
+            'paid_kyat' => 0,
+            'items' => [
+                ['curry_item_id' => $firstItem->id, 'quantity' => 1],
+                ['curry_item_id' => $secondItem->id, 'quantity' => 1],
+            ],
+        ])->assertCreated();
+
+        $this->assertSame(1, $curryQueries);
+    }
+
+    public function test_sale_rejects_a_subtotal_above_the_supported_money_limit(): void
+    {
+        $user = $this->makeUserWithPermissions(['create_sale']);
+        [$customer, $item] = $this->createCustomerAndItems();
+        $item->update(['current_price_kyat' => 9000000000000]);
+
+        $this->actingAs($user)->postJson('/api/sales', [
+            'customer_id' => $customer->id,
+            'is_walk_in' => false,
+            'sale_at' => now()->toIso8601String(),
+            'discount_kyat' => 0,
+            'paid_kyat' => 0,
+            'items' => [['curry_item_id' => $item->id, 'quantity' => 2]],
+        ])->assertUnprocessable()->assertJsonValidationErrors('items');
+
+        $this->assertDatabaseCount('sales', 0);
+        $this->assertDatabaseCount('customer_ledger_entries', 0);
+    }
+
+    public function test_sale_customer_options_are_bounded_searchable_and_keep_the_selected_customer(): void
+    {
+        $user = $this->makeUserWithPermissions(['create_sale']);
+        foreach (range(1, 60) as $index) {
+            Customer::query()->create([
+                'name' => sprintf('Customer %03d', $index),
+                'phone_number' => '09'.str_pad((string) $index, 8, '0', STR_PAD_LEFT),
+                'is_active' => true,
+                'is_archived' => false,
+            ]);
+        }
+        $selected = Customer::query()->where('name', 'Customer 060')->firstOrFail();
+
+        $this->actingAs($user)
+            ->getJson('/api/sales/create-options')
+            ->assertOk()
+            ->assertJsonCount(50, 'customers');
+
+        $this->actingAs($user)
+            ->getJson('/api/sales/create-options?customer_q=060')
+            ->assertOk()
+            ->assertJsonCount(1, 'customers')
+            ->assertJsonPath('customers.0.id', $selected->id);
+
+        $this->actingAs($user)
+            ->getJson("/api/sales/create-options?customer_id={$selected->id}")
+            ->assertOk()
+            ->assertJsonCount(51, 'customers')
+            ->assertJsonPath('customers.0.id', $selected->id);
     }
 
     public function test_payment_and_loan_operations_create_expected_ledger_deltas(): void
@@ -663,9 +739,15 @@ class SalesLedgerTest extends TestCase
 
         $this->assertSame(0, $this->latestBalanceFor($customer));
 
-        $history = $this->actingAs($user)->getJson('/api/sales');
+        $history = $this->actingAs($user)->getJson('/api/histories?range=yesterday');
         $history->assertOk()
-            ->assertJsonPath('0.id', $saleId)
-            ->assertJsonPath('0.is_reversed', true);
+            ->assertJsonPath('data.0.record_id', $saleId)
+            ->assertJsonPath('data.0.is_reversed', true);
+
+        $this->actingAs($user)
+            ->getJson("/api/histories/sales/{$saleId}")
+            ->assertOk()
+            ->assertJsonPath('id', $saleId)
+            ->assertJsonPath('is_reversed', true);
     }
 }
