@@ -979,6 +979,11 @@ textarea:focus {
     max-height: calc(100vh - 180px);
     overflow: auto;
 }
+.customer-list-page .customer-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+}
 .search {
     display: grid;
     grid-template-columns: 1fr auto;
