@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Customer;
-use App\Models\CustomerLedgerEntry;
 use App\Models\Sale;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class HistoryController extends Controller
@@ -17,61 +17,56 @@ class HistoryController extends Controller
         $type = $request->query('type', 'all');
         $customerId = $request->integer('customer_id') ?: null;
         $perPage = min(50, max(5, $request->integer('per_page', 20)));
-        $page = max(1, $request->integer('page', 1));
-        $rows = collect();
+        $sales = DB::table('sales')
+            ->leftJoin('customers', 'customers.id', '=', 'sales.customer_id')
+            ->whereBetween('sales.sale_at', [$range['from'], $range['to']])
+            ->when($customerId, fn ($query) => $query->where('sales.customer_id', $customerId))
+            ->when($type !== 'all', fn ($query) => $query->whereRaw($type === 'sale' ? '1 = 1' : '1 = 0'))
+            ->selectRaw("'sale' as type")
+            ->addSelect([
+                'sales.id as record_id',
+                'sales.sale_at as occurred_at',
+                'sales.customer_id',
+                'customers.name as customer_name',
+                'sales.invoice_number as title',
+                'sales.total_kyat as amount_kyat',
+                'sales.is_reversed',
+            ]);
 
-        if (in_array($type, ['all', 'sale'], true)) {
-            $sales = Sale::query()
-                ->with('customer:id,name')
-                ->whereBetween('sale_at', [$range['from'], $range['to']])
-                ->when($customerId, fn ($query) => $query->where('customer_id', $customerId))
-                ->get();
+        $ledger = DB::table('customer_ledger_entries')
+            ->leftJoin('customers', 'customers.id', '=', 'customer_ledger_entries.customer_id')
+            ->whereBetween('customer_ledger_entries.occurred_at', [$range['from'], $range['to']])
+            ->whereIn('customer_ledger_entries.event_type', $type === 'all' ? ['customer_paid', 'money_lent'] : [$type])
+            ->when($customerId, fn ($query) => $query->where('customer_ledger_entries.customer_id', $customerId))
+            ->select([
+                'customer_ledger_entries.event_type as type',
+                'customer_ledger_entries.id as record_id',
+                'customer_ledger_entries.occurred_at',
+                'customer_ledger_entries.customer_id',
+                'customers.name as customer_name',
+                'customer_ledger_entries.reason as title',
+            ])
+            ->selectRaw('ABS(customer_ledger_entries.amount_kyat) as amount_kyat')
+            ->selectRaw('CASE WHEN EXISTS (SELECT 1 FROM customer_ledger_entries reversals WHERE reversals.reverses_entry_id = customer_ledger_entries.id) THEN 1 ELSE 0 END as is_reversed');
 
-            foreach ($sales as $sale) {
-                $rows->push([
-                    'key' => 'sale-'.$sale->id,
-                    'type' => 'sale',
-                    'record_id' => $sale->id,
-                    'occurred_at' => $sale->sale_at,
-                    'customer' => $sale->customer,
-                    'title' => $sale->invoice_number,
-                    'amount_kyat' => $sale->total_kyat,
-                    'is_reversed' => $sale->is_reversed,
-                ]);
-            }
-        }
+        $rows = DB::query()
+            ->fromSub($sales->unionAll($ledger), 'history')
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('record_id')
+            ->paginate($perPage);
 
-        if (in_array($type, ['all', 'customer_paid', 'money_lent'], true)) {
-            $entries = CustomerLedgerEntry::query()
-                ->with(['customer:id,name', 'reversedBy:id,reverses_entry_id'])
-                ->whereIn('event_type', $type === 'all' ? ['customer_paid', 'money_lent'] : [$type])
-                ->whereBetween('occurred_at', [$range['from'], $range['to']])
-                ->when($customerId, fn ($query) => $query->where('customer_id', $customerId))
-                ->get();
-
-            foreach ($entries as $entry) {
-                $rows->push([
-                    'key' => 'ledger-'.$entry->id,
-                    'type' => $entry->event_type,
-                    'record_id' => $entry->id,
-                    'occurred_at' => $entry->occurred_at,
-                    'customer' => $entry->customer,
-                    'title' => $entry->reason,
-                    'amount_kyat' => abs($entry->amount_kyat),
-                    'is_reversed' => $entry->reversedBy->isNotEmpty(),
-                ]);
-            }
-        }
-
-        $rows = $rows->sortByDesc(fn ($row) => sprintf('%s-%010d', Carbon::parse($row['occurred_at'])->format('YmdHis.u'), $row['record_id']))->values();
-        $total = $rows->count();
+        $rows->through(fn ($row) => [
+            'type' => $row->type,
+            'record_id' => $row->record_id,
+            'occurred_at' => $row->occurred_at,
+            'customer' => $row->customer_id ? ['id' => $row->customer_id, 'name' => $row->customer_name] : null,
+            'title' => $row->title,
+            'amount_kyat' => (int) $row->amount_kyat,
+            'is_reversed' => (bool) $row->is_reversed,
+        ]);
 
         return response()->json([
-            'data' => $rows->slice(($page - 1) * $perPage, $perPage)->values(),
-            'current_page' => $page,
-            'last_page' => max(1, (int) ceil($total / $perPage)),
-            'per_page' => $perPage,
-            'total' => $total,
+            ...$rows->toArray(),
             'filters' => [
                 'range' => $request->query('range', 'today'),
                 'from' => $range['from']->toDateString(),

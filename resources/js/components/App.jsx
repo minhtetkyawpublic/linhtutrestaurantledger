@@ -3715,22 +3715,45 @@ function StaffManager({ t }) {
 
 function AuditManager({ t }) {
     const [entries, setEntries] = useState([]);
+    const [page, setPage] = useState({
+        current_page: 1,
+        last_page: 1,
+        total: 0,
+    });
     const [error, setError] = useState("");
-    const load = useCallback(async () => {
-        try {
-            setEntries((await apiClient.get("/admin/audit-history")).data);
-        } catch (error) {
-            setError(errorMessage(error, t("load_failed")));
-        }
-    }, [t]);
+    const load = useCallback(
+        async (nextPage = 1) => {
+            try {
+                const response = await apiClient.get("/admin/audit-history", {
+                    params: { page: nextPage, per_page: 20 },
+                });
+                setEntries(response.data.data || []);
+                setPage({
+                    current_page: response.data.current_page || 1,
+                    last_page: response.data.last_page || 1,
+                    total: response.data.total || 0,
+                });
+                setError("");
+            } catch (error) {
+                setError(errorMessage(error, t("load_failed")));
+            }
+        },
+        [t],
+    );
     useEffect(() => {
         load();
     }, [load]);
     return (
         <section className="panel">
             <div className="section-heading">
-                <h2>{t("audit_history")}</h2>
-                <button className="text-button" onClick={load}>
+                <div>
+                    <h2>{t("audit_history")}</h2>
+                    <small>{page.total}</small>
+                </div>
+                <button
+                    className="text-button"
+                    onClick={() => load(page.current_page)}
+                >
                     {t("refresh")}
                 </button>
             </div>
@@ -3755,6 +3778,27 @@ function AuditManager({ t }) {
                 </div>
             ) : (
                 <Empty t={t} />
+            )}
+            {page.last_page > 1 && (
+                <div className="pagination-row">
+                    <button
+                        className="secondary compact"
+                        disabled={page.current_page <= 1}
+                        onClick={() => load(page.current_page - 1)}
+                    >
+                        ‹
+                    </button>
+                    <span>
+                        {page.current_page} / {page.last_page}
+                    </span>
+                    <button
+                        className="secondary compact"
+                        disabled={page.current_page >= page.last_page}
+                        onClick={() => load(page.current_page + 1)}
+                    >
+                        ›
+                    </button>
+                </div>
             )}
         </section>
     );

@@ -174,6 +174,7 @@ class AdminPermissionController extends Controller
 
     public function auditHistory(Request $request)
     {
+        $perPage = min(50, max(10, $request->integer('per_page', 20)));
         $query = AuditLog::query()
             ->with('actor:id,name,email')
             ->latest('id');
@@ -182,7 +183,7 @@ class AdminPermissionController extends Controller
             $query->where('action', $request->string('action'));
         }
 
-        return $query->limit(200)->get();
+        return $query->paginate($perPage);
     }
 
     private function audit(Request $request, string $action, Model $subject, array $changes = [], ?string $reason = null): void

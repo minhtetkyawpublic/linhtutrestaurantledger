@@ -184,6 +184,14 @@ class AuthPermissionsTest extends TestCase
 
         $this->actingAs($admin)->getJson('/api/admin/audit-history')
             ->assertOk()
+            ->assertJsonStructure([
+                'data',
+                'current_page',
+                'last_page',
+                'per_page',
+                'total',
+            ])
+            ->assertJsonPath('per_page', 20)
             ->assertJsonFragment(['action' => 'staff_created'])
             ->assertJsonFragment(['action' => 'staff_password_reset']);
     }
