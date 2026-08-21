@@ -27,7 +27,7 @@
 
     # Map only reviewed public assets. The relative substitution preserves any
     # folder prefix automatically when this project is nested in public_html.
-    RewriteRule ^(build/.*|favicon\.ico|icons?/.*|icon-(192|512)\.(svg|png)|manifest\.webmanifest|offline\.html|robots\.txt|service-worker\.js)$ public/$1 [L,NS,QSA]
+    RewriteRule ^(build/.*|favicon\.ico|linhtuticon\.jpg|icon-(48|180|192|512)\.png|icon-maskable-512\.png|manifest\.webmanifest|offline\.html|robots\.txt|service-worker\.js)$ public/$1 [L,NS,QSA]
 
     # Route everything else through Laravel's front controller.
     RewriteRule ^ index.php [L,QSA]

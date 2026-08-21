@@ -291,6 +291,8 @@ const main = async () => {
         "node_modules|reference_docs|resources",
         "public/$1 [L,NS,QSA]",
         "RewriteRule ^ index.php",
+        "linhtuticon\\.jpg",
+        "icon-maskable-512\\.png",
     ];
 
     for (const expected of requiredRootHtaccessRules) {

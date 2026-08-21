@@ -21,6 +21,8 @@ class HostingSecurityTest extends TestCase
         $this->assertStringContainsString('public/$1 [L,NS,QSA]', $contents);
         $this->assertStringNotContainsString('public%{REQUEST_URI}', $contents);
         $this->assertStringContainsString('RewriteRule ^ index.php [L,QSA]', $contents);
+        $this->assertStringContainsString('linhtuticon\.jpg', $contents);
+        $this->assertStringContainsString('icon-maskable-512\.png', $contents);
     }
 
     public function test_public_htaccess_adds_security_headers_for_preferred_layout(): void
