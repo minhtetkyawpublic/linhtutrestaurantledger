@@ -695,6 +695,35 @@ textarea:focus {
     background: transparent;
     color: inherit;
     text-align: left;
+    min-height: 62px;
+    padding: 0.55rem 0.35rem;
+    transition:
+        background 0.15s ease,
+        transform 0.15s ease;
+}
+.customer-row:hover,
+.customer-row:focus-visible {
+    border-radius: 10px;
+    background: #fff7ef;
+}
+.customer-row:active {
+    transform: scale(0.995);
+}
+.customer-row > span:first-child strong {
+    font-size: 0.92rem;
+    line-height: 1.35;
+}
+.customer-row > span:first-child small {
+    font-size: 0.72rem;
+}
+.customer-row .balance span {
+    font-size: 0.6rem;
+}
+.customer-row .balance strong {
+    font-size: 0.78rem;
+}
+.customer-row .row-arrow {
+    font-size: 1.25rem;
 }
 .customer-row.selected {
     margin: 0 -0.5rem;

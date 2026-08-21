@@ -1329,6 +1329,86 @@ function CustomersScreen({
         <div
             className={`screen customer-layout ${initialCustomerId ? "customer-detail-page" : "customer-list-page"}`}
         >
+            {initialCustomerId && showCreate && (
+                <Modal
+                    title={
+                        customerForm.id ? t("edit_customer") : t("new_customer")
+                    }
+                    onClose={() => setShowCreate(false)}
+                >
+                    <form className="inset-form stack" onSubmit={saveCustomer}>
+                        <label>
+                            {t("name")}
+                            <input
+                                value={customerForm.name}
+                                onChange={(event) =>
+                                    setCustomerForm({
+                                        ...customerForm,
+                                        name: event.target.value,
+                                    })
+                                }
+                                required
+                            />
+                        </label>
+                        <label>
+                            {t("phone")}
+                            <input
+                                inputMode="tel"
+                                value={customerForm.phone_number}
+                                onChange={(event) =>
+                                    setCustomerForm({
+                                        ...customerForm,
+                                        phone_number: event.target.value,
+                                    })
+                                }
+                            />
+                        </label>
+                        <label>
+                            {t("address_note")}
+                            <textarea
+                                value={customerForm.address_or_note}
+                                onChange={(event) =>
+                                    setCustomerForm({
+                                        ...customerForm,
+                                        address_or_note: event.target.value,
+                                    })
+                                }
+                            />
+                        </label>
+                        <div className="two-column">
+                            <label>
+                                {t("opening_balance")}
+                                <input
+                                    type="number"
+                                    inputMode="numeric"
+                                    value={customerForm.opening_balance_kyat}
+                                    onChange={(event) =>
+                                        setCustomerForm({
+                                            ...customerForm,
+                                            opening_balance_kyat:
+                                                event.target.value,
+                                        })
+                                    }
+                                />
+                            </label>
+                            <label>
+                                {t("reason")}
+                                <input
+                                    value={customerForm.opening_balance_reason}
+                                    onChange={(event) =>
+                                        setCustomerForm({
+                                            ...customerForm,
+                                            opening_balance_reason:
+                                                event.target.value,
+                                        })
+                                    }
+                                />
+                            </label>
+                        </div>
+                        <button className="primary">{t("save")}</button>
+                    </form>
+                </Modal>
+            )}
             {!initialCustomerId && (
                 <section className="panel customer-sidebar stack">
                     <div className="section-heading">
